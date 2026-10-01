@@ -53,6 +53,10 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 
 Copy the signing secret printed by Stripe CLI into `STRIPE_WEBHOOK_SECRET`. Configure the Stripe endpoint to send `checkout.session.completed`, `invoice.payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted` events. Active and trialing subscriptions receive the 100 GB storage limit; canceled or otherwise inactive subscriptions return to the free limit.
 
+## Vercel Deployment
+
+Set `NEXTAUTH_URL` in the Vercel project's **Production** environment to `https://drive-cloude-storage-project.vercel.app`, then redeploy. Keep `NEXTAUTH_URL` set to `http://localhost:3000` in the local `.env` file. Configure the production database, S3, authentication, encryption, Stripe, and Redis environment variables in Vercel as well; do not commit `.env` or secret values.
+
 ## Uploads and Storage
 
 File contents upload directly from the browser to private S3-compatible storage using presigned requests. Small uploads use a single PUT; large uploads use resumable multipart transfers. The app enforces storage quota using the user's database values when preparing and completing uploads. Free accounts receive 5 GiB, and Pro accounts receive 100 GiB.
