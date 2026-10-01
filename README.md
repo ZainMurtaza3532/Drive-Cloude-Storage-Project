@@ -2,7 +2,10 @@
 
 Drivea is a cloud file-storage application built with Next.js App Router, Prisma, and PostgreSQL. It supports account authentication, file and folder management, direct S3-compatible uploads, sharing, file version history, search, trash, and a browser-encrypted Vault. Stripe subscriptions provide the 100 GB Pro storage plan.
 
+<<<<<<< HEAD
 Live site: [https://drive-cloude-storage-project.vercel.app](https://drive-cloude-storage-project.vercel.app)
+=======
+>>>>>>> 8602bb0c060baed9dd2c208713f119592fa4fd9b
 
 ## Requirements
 
