@@ -20,6 +20,9 @@ if (process.env.NODE_ENV === "production" && !authSecret) {
   throw new Error("NEXTAUTH_SECRET must be configured in production.");
 }
 
+const githubId = process.env.GITHUB_CLIENT_ID || process.env.GITHUB_ID;
+const githubSecret = process.env.GITHUB_CLIENT_SECRET || process.env.GITHUB_SECRET;
+
 export const authOptions: NextAuthOptions = {
   secret: authSecret,
   useSecureCookies: process.env.NODE_ENV === "production",
@@ -27,28 +30,28 @@ export const authOptions: NextAuthOptions = {
   providers: [
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [
-        GoogleProvider({
-          clientId: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          allowDangerousEmailAccountLinking: false,
-          httpOptions: oauthHttpOptions,
-          authorization: {
-            params: {
-              prompt: "select_account",
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: false,
+            httpOptions: oauthHttpOptions,
+            authorization: {
+              params: {
+                prompt: "select_account",
+              },
             },
-          },
-        }),
-      ]
+          }),
+        ]
       : []),
-    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+    ...(githubId && githubSecret
       ? [
-        GitHubProvider({
-          clientId: process.env.GITHUB_CLIENT_ID,
-          clientSecret: process.env.GITHUB_CLIENT_SECRET,
-          allowDangerousEmailAccountLinking: false,
-          httpOptions: oauthHttpOptions,
-        }),
-      ]
+          GitHubProvider({
+            clientId: githubId,
+            clientSecret: githubSecret,
+            allowDangerousEmailAccountLinking: false,
+            httpOptions: oauthHttpOptions,
+          }),
+        ]
       : []),
     CredentialsProvider({
       name: "credentials",
