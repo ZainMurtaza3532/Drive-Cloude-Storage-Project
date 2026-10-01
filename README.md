@@ -3,7 +3,7 @@
 Drivea is a cloud file-storage application built with Next.js App Router, Prisma, and PostgreSQL. It supports account authentication, file and folder management, direct S3-compatible uploads, sharing, file version history, search, trash, and a browser-encrypted Vault. Stripe subscriptions provide the 100 GB Pro storage plan.
 
 <<<<<<< HEAD
-Live site: [https://drive-cloude-storage-project.vercel.app](https://drive-cloude-storage-project.vercel.app)
+Live site: [https://drive-cloude-storage.vercel.app](https://drive-cloude-storage-project.vercel.app)
 =======
 >>>>>>> 8602bb0c060baed9dd2c208713f119592fa4fd9b
 
@@ -55,7 +55,7 @@ Copy the signing secret printed by Stripe CLI into `STRIPE_WEBHOOK_SECRET`. Conf
 
 ## Vercel Deployment
 
-Set `NEXTAUTH_URL` in the Vercel project's **Production** environment to `https://drive-cloude-storage-project.vercel.app`, then redeploy. Keep `NEXTAUTH_URL` set to `http://localhost:3000` in the local `.env` file. Configure the production database, S3, authentication, encryption, Stripe, and Redis environment variables in Vercel as well; do not commit `.env` or secret values.
+Set `NEXTAUTH_URL` in the Vercel project's **Production** environment to `https://drive-cloude-storage.vercel.app`, then redeploy. Keep `NEXTAUTH_URL` set to `http://localhost:3000` in the local `.env` file. Configure the production database, S3, authentication, encryption, Stripe, and Redis environment variables in Vercel as well; do not commit `.env` or secret values.
 
 ## Uploads and Storage
 
