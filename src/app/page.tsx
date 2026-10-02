@@ -28,8 +28,7 @@ export default function Home() {
       <main className="flex flex-col items-center justify-center w-full max-w-3xl text-center">
         <DriveaLogo iconSize={48} textSize="text-3xl" className="mb-8" />
         <h1 className="text-4xl font-bold leading-tight text-[#1e2229] sm:text-6xl dark:text-white">
-          Secure, Simple &amp; Fast <br />
-          <span className="text-[#f15a24]">Cloud Storage.</span>
+          DRIVEA <span className="text-[#f15a24]">Cloud Storage</span>
         </h1>
         <p className="mt-6 max-w-xl text-lg text-[#64748b] sm:text-xl dark:text-slate-300">
           Store your files securely in our drive, organize into folders, share with permissions and access anywhere.

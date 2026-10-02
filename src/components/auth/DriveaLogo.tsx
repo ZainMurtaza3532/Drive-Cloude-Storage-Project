@@ -40,7 +40,7 @@ export function DriveaLogo({
         <span
           className={`font-bold tracking-[0.06em] text-[#1e2229] dark:text-white uppercase leading-none transition-colors ${textSize}`}
         >
-          DRIVE STORAGE
+          DRIVEA
         </span>
       )}
     </div>
