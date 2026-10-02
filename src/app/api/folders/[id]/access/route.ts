@@ -53,7 +53,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         }
 
         const invitedUser = await prisma.user.findUnique({ where: { email } })
-        if (!invitedUser) return NextResponse.json({ error: 'No Drivea account exists for that email.' }, { status: 404 })
+        if (!invitedUser) return NextResponse.json({ error: 'No Drive Storage account exists for that email.' }, { status: 404 })
         if (invitedUser.id === session.user.id) {
             return NextResponse.json({ error: 'You already own this folder.' }, { status: 400 })
         }

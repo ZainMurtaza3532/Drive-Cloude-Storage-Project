@@ -6,7 +6,7 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Sign In',
-  description: 'Sign in to access your DRIVEA cloud storage files and folders.',
+  description: 'Sign in to access your Drive Storage files and folders.',
   robots: { index: false, follow: false },
 }
 

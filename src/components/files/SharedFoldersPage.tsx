@@ -120,7 +120,7 @@ export function SharedFoldersPage() {
             <div className="space-y-6">
                 <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-800">
                     <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-[#f15a24]">Drivea workspace</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#f15a24]">Drive Storage workspace</p>
                         <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
                             {currentFolder?.name ?? 'Shared with me'}
                         </h1>

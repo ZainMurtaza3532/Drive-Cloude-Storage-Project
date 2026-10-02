@@ -105,7 +105,7 @@ export const StorageMeter: React.FC<StorageMeterProps> = ({
         <div className="flex min-w-0 items-center gap-2 text-slate-700 dark:text-slate-200">
           <HardDrive className="h-4 w-4 shrink-0 text-[#f15a24]" />
           <span className="truncate text-xs font-semibold uppercase tracking-wider">
-            {hasProStorage ? 'Drivea Pro Plan (100 GB)' : 'Free Plan (5 GB)'}
+            {hasProStorage ? 'Drive Storage Pro plan (100 GB)' : 'Free Plan (5 GB)'}
           </span>
         </div>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${badgeColor}`}>
@@ -136,7 +136,7 @@ export const StorageMeter: React.FC<StorageMeterProps> = ({
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex min-w-0 items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-300">
             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span className="break-words text-[11px] font-semibold leading-4">Drivea Pro Active (100 GB)</span>
+            <span className="break-words text-[11px] font-semibold leading-4">Drive Storage Pro active (100 GB)</span>
           </div>
           <button
             type="button"

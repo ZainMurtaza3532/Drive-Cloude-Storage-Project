@@ -22,7 +22,7 @@ export function DriveaLogo({
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className="shrink-0 transition-transform duration-200 hover:scale-105"
-        aria-label="Drivea Logo"
+        aria-label="Drive Storage logo"
       >
         {/* Left folded facet (rich deep orange) */}
         <path
@@ -40,7 +40,7 @@ export function DriveaLogo({
         <span
           className={`font-bold tracking-[0.06em] text-[#1e2229] dark:text-white uppercase leading-none transition-colors ${textSize}`}
         >
-          DRIVEA
+          Drive Storage
         </span>
       )}
     </div>

@@ -71,8 +71,8 @@ function decryptSecret(value: string) {
 
 export function createTotpEnrollment(email: string) {
   const secret = encodeBase32(randomBytes(20))
-  const label = encodeURIComponent(`Drivea:${email || 'account'}`)
-  const issuer = encodeURIComponent('Drivea')
+  const label = encodeURIComponent(`Drive Storage:${email || 'account'}`)
+  const issuer = encodeURIComponent('Drive Storage')
   const otpauthUrl = `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=${TOTP_PERIOD_SECONDS}`
 
   return { secret, encryptedSecret: encryptSecret(secret), otpauthUrl }

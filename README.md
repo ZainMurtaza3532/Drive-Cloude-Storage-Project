@@ -1,6 +1,6 @@
-# Drivea
+# Drive Storage
 
-Drivea is a cloud storage web app built with Next.js App Router, Prisma, and PostgreSQL. It provides file and folder management, private S3-compatible uploads, sharing, search, version history, trash, a browser-encrypted Vault, and optional Stripe subscriptions.
+Drive Storage is a web app built with Next.js App Router, Prisma, and PostgreSQL. It provides file and folder management, private S3-compatible uploads, sharing, search, version history, trash, a browser-encrypted Vault, and optional Stripe subscriptions.
 
 **Live app:** [drive-cloude-storage.vercel.app](https://drive-cloude-storage.vercel.app)
 

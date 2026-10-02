@@ -20,21 +20,21 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: SITE_URL,
   title: {
-    default: 'DRIVEA | Secure Cloud Storage',
-    template: '%s | DRIVEA',
+    default: 'Drive Storage | Secure File Storage',
+    template: '%s | Drive Storage',
   },
   description: 'Store and organize files in cloud storage, then share them with controlled access.',
-  applicationName: 'DRIVEA',
+  applicationName: 'Drive Storage',
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    siteName: 'DRIVEA',
-    title: 'DRIVEA | Secure Cloud Storage',
+    siteName: 'Drive Storage',
+    title: 'Drive Storage | Secure File Storage',
     description: 'Store and organize files in cloud storage, then share them with controlled access.',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'DRIVEA | Secure Cloud Storage',
+    title: 'Drive Storage | Secure File Storage',
     description: 'Store and organize files in cloud storage, then share them with controlled access.',
   },
 }

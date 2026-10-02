@@ -103,7 +103,7 @@ export function UpgradeModal({
               <Sparkles className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase text-[#f15a24]">Drivea Pro</p>
+              <p className="text-xs font-semibold uppercase text-[#f15a24]">Drive Storage Pro</p>
               <h2 id="upgrade-title" className="break-words text-lg font-semibold text-zinc-900 dark:text-white">
                 More room for your files
               </h2>

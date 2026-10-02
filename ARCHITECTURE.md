@@ -1,4 +1,4 @@
-# Drivea Platform Architecture
+# Drive Storage Platform Architecture
 
 ## Request and Data Flow
 

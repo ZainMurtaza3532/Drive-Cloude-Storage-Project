@@ -91,7 +91,7 @@ export function PublicShare({ token }: { token: string }) {
     return (
         <main className="min-h-screen bg-[#f4f6f8] px-4 py-10 text-slate-900 dark:bg-[#0d1219] dark:text-slate-100 sm:py-16">
             <div className="mx-auto max-w-3xl">
-                <header className="mb-8 flex items-center gap-2 text-sm font-semibold tracking-wide text-[#f15a24]"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f15a24] text-white"><ShieldCheck className="h-4 w-4" /></span> DRIVEA <span className="font-normal text-slate-400">/ Shared item</span></header>
+                <header className="mb-8 flex items-center gap-2 text-sm font-semibold tracking-wide text-[#f15a24]"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f15a24] text-white"><ShieldCheck className="h-4 w-4" /></span> DRIVE STORAGE <span className="font-normal text-slate-400">/ Shared item</span></header>
                 <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#131922]">
                     <div className="border-b border-slate-200 px-5 py-5 sm:px-7 dark:border-slate-800">
                         <div className="flex items-center gap-3">
@@ -129,7 +129,7 @@ export function PublicShare({ token }: { token: string }) {
                     ) : null}
                     {error && <p role="alert" className="border-t border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">{error}</p>}
                 </section>
-                <p className="mt-5 text-center text-xs text-slate-400">Shared securely with Drivea</p>
+                <p className="mt-5 text-center text-xs text-slate-400">Shared securely with Drive Storage</p>
             </div>
         </main>
     )

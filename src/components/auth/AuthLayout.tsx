@@ -16,10 +16,10 @@ export function AuthLayout({ initialMode }: AuthLayoutProps) {
     <div className="relative flex min-h-screen w-full overflow-x-hidden bg-white font-sans selection:bg-[#f15a24]/10 selection:text-[#f15a24] dark:bg-[#0b0f17]">
       {/* Main Container: Split 2-column layout on Desktop */}
       <div className="flex-1 flex flex-col lg:flex-row w-full min-h-screen">
-        
+
         {/* LEFT COLUMN: Hero & Branding */}
         <section className="relative flex w-full flex-col justify-between border-b border-[#f1f1f0] bg-[#faf9f8]/60 p-8 sm:p-12 lg:w-[48%] lg:border-b-0 lg:border-r lg:bg-[#fcfbf9]/40 lg:p-16 xl:w-[50%] xl:p-24 dark:border-slate-800 dark:bg-[#111827] lg:dark:bg-[#111827]">
-          
+
           {/* Top Brand Logo */}
           <div className="flex items-center">
             <Link href="/" className="inline-block transition-opacity hover:opacity-90">
@@ -32,7 +32,7 @@ export function AuthLayout({ initialMode }: AuthLayoutProps) {
             <h1 className="text-3xl font-bold leading-[1.12] text-[#1e2229] sm:text-4xl lg:text-[50px] xl:text-[54px] dark:text-white">
               Secure, Simple &amp; Fast
               <br />
-              <span className="text-[#f15a24]">Cloud Storage.</span>
+              <span className="text-[#f15a24]">Drive Storage.</span>
             </h1>
             <p className="mt-5 max-w-[430px] text-base leading-relaxed text-[#64748b] lg:text-[17px] dark:text-slate-300">
               Store your files securely in our drive, organize into folders, share with permissions and access anywhere.

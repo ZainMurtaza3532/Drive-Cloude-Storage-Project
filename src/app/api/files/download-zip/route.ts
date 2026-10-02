@@ -89,7 +89,7 @@ export async function GET(request: Request) {
         return new Response(Readable.toWeb(output) as ReadableStream, {
             headers: {
                 'Content-Type': 'application/zip',
-                'Content-Disposition': 'attachment; filename="drivea-download.zip"',
+                'Content-Disposition': 'attachment; filename="drive-storage-download.zip"',
                 'Cache-Control': 'private, no-store',
             },
         })
