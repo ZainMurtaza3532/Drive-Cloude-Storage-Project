@@ -1,4 +1,6 @@
 import { createHmac } from 'node:crypto'
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis as UpstashRedis } from '@upstash/redis'
 import Redis from 'ioredis'
 import { z } from 'zod'
 import {
@@ -8,8 +10,13 @@ import {
 } from './upload-constraints'
 
 const redisUrl = process.env.REDIS_URL?.trim()
+const upstashUrl = process.env.UPSTASH_REDIS_REST_URL?.trim()
+const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
 let redis: Redis | undefined
+let upstashRedis: UpstashRedis | undefined
+const upstashLimiters = new Map<keyof typeof RATE_LIMITS, Ratelimit>()
 const localBuckets = new Map<string, { count: number; resetAt: number }>()
+let warnedRateLimitUnavailable = false
 
 export const RATE_LIMITS = {
     auth: { limit: 10, windowSeconds: 60 },
@@ -85,6 +92,29 @@ export async function enforceRateLimit(subject: string, policyName: keyof typeof
     const hashedSubject = createHmac('sha256', keySecret).update(subject).digest('hex')
     const bucketKey = `drivea:rate-limit:${policyName}:${hashedSubject}`
 
+    if (upstashUrl && upstashToken) {
+        try {
+            upstashRedis ??= new UpstashRedis({ url: upstashUrl, token: upstashToken })
+            let limiter = upstashLimiters.get(policyName)
+            if (!limiter) {
+                limiter = new Ratelimit({
+                    redis: upstashRedis,
+                    limiter: Ratelimit.slidingWindow(policy.limit, `${policy.windowSeconds} s`),
+                    prefix: `drivea:rate-limit:${policyName}`,
+                    analytics: false,
+                })
+                upstashLimiters.set(policyName, limiter)
+            }
+
+            const result = await limiter.limit(hashedSubject)
+            return result.success ? null : rateLimitedResponse(Math.max(1, Math.ceil((result.reset - now) / 1_000)), result.limit, result.remaining, result.reset)
+        } catch {
+            if (process.env.NODE_ENV === 'production') {
+                return Response.json({ error: 'Rate limiting is temporarily unavailable.' }, { status: 503 })
+            }
+        }
+    }
+
     if (redisUrl) {
         try {
             redis ??= new Redis(redisUrl, {
@@ -106,7 +136,11 @@ export async function enforceRateLimit(subject: string, policyName: keyof typeof
             }
         }
     } else if (process.env.NODE_ENV === 'production') {
-        return Response.json({ error: 'Distributed rate limiting is not configured.' }, { status: 503 })
+        if (!warnedRateLimitUnavailable) {
+            console.warn('Distributed rate limiting is not configured. Skipping rate limit checks.')
+            warnedRateLimitUnavailable = true
+        }
+        return null
     }
 
     const current = localBuckets.get(bucketKey)
@@ -121,10 +155,17 @@ export async function enforceRateLimit(subject: string, policyName: keyof typeof
         : null
 }
 
-function rateLimitedResponse(retryAfterSeconds: number) {
+function rateLimitedResponse(retryAfterSeconds: number, limit?: number, remaining = 0, reset?: number) {
+    const headers = new Headers({
+        'Retry-After': String(retryAfterSeconds),
+        'X-RateLimit-Remaining': String(remaining),
+    })
+    if (limit !== undefined) headers.set('X-RateLimit-Limit', String(limit))
+    if (reset !== undefined) headers.set('X-RateLimit-Reset', String(Math.ceil(reset / 1_000)))
+
     return Response.json(
         { error: 'Too many requests. Please retry later.' },
-        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+        { status: 429, headers },
     )
 }
 
