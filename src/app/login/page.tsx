@@ -5,8 +5,9 @@ import { AuthLayout } from '@/components/auth/AuthLayout'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Sign In | DRIVEA - Cloud Storage',
+  title: 'Sign In',
   description: 'Sign in to access your DRIVEA cloud storage files and folders.',
+  robots: { index: false, follow: false },
 }
 
 export default async function LoginPage() {

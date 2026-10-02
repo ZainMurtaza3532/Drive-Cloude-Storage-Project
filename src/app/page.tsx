@@ -1,9 +1,30 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { DriveaLogo } from '@/components/auth/DriveaLogo'
+import { SITE_URL } from '@/lib/site'
+
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+  openGraph: { url: '/' },
+}
 
 export default function Home() {
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: 'DRIVEA',
+    applicationCategory: 'FileManagementApplication',
+    operatingSystem: 'Any',
+    url: SITE_URL.toString(),
+    description: 'Store and organize files in cloud storage, then share them with controlled access.',
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#fdfcfb] to-white px-4 py-12 dark:from-[#0b0f17] dark:to-[#111827]">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }}
+      />
       <main className="flex flex-col items-center justify-center w-full max-w-3xl text-center">
         <DriveaLogo iconSize={48} textSize="text-3xl" className="mb-8" />
         <h1 className="text-4xl font-bold leading-tight text-[#1e2229] sm:text-6xl dark:text-white">

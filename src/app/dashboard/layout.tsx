@@ -1,7 +1,13 @@
+import type { Metadata } from 'next'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { UploadProvider } from '@/context/UploadContext'
 import { GlobalUploadWidget } from '@/components/GlobalUploadWidget'
+
+export const metadata: Metadata = {
+  title: 'My Drive',
+  robots: { index: false, follow: false },
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (

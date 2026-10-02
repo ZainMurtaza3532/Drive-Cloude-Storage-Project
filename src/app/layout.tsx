@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Outfit, Inter } from 'next/font/google'
 import './globals.css'
 import { Providers } from '@/components/Providers'
+import { SITE_URL } from '@/lib/site'
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -17,8 +18,25 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'DRIVEA - Secure, Simple & Fast Cloud Storage',
-  description: 'Store your files securely in our drive, organize into folders, share with permissions and access anywhere.',
+  metadataBase: SITE_URL,
+  title: {
+    default: 'DRIVEA | Secure Cloud Storage',
+    template: '%s | DRIVEA',
+  },
+  description: 'Store and organize files in cloud storage, then share them with controlled access.',
+  applicationName: 'DRIVEA',
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    siteName: 'DRIVEA',
+    title: 'DRIVEA | Secure Cloud Storage',
+    description: 'Store and organize files in cloud storage, then share them with controlled access.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DRIVEA | Secure Cloud Storage',
+    description: 'Store and organize files in cloud storage, then share them with controlled access.',
+  },
 }
 
 export default function RootLayout({
