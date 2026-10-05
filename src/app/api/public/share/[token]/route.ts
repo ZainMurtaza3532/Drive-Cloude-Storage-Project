@@ -1,10 +1,14 @@
 import bcrypt from 'bcrypt'
-import { NextResponse } from 'next/server'
+import { decode, encode } from 'next-auth/jwt'
+import { NextRequest, NextResponse } from 'next/server'
 import { contentDispositionFilename } from '@/lib/files'
 import prisma from '@/lib/prisma'
 import { generateDownloadUrl } from '@/lib/s3'
 
 type RouteContext = { params: Promise<{ token: string }> }
+
+const ACCESS_COOKIE = 'vault_access_token'
+const ACCESS_TOKEN_TTL = 30 * 60
 
 type SharedFile = {
     id: string
@@ -35,7 +39,7 @@ const sharedFileSelect = {
     },
 } as const
 
-export async function POST(request: Request, { params }: RouteContext) {
+export async function POST(request: NextRequest, { params }: RouteContext) {
     try {
         const { token } = await params
         const body = await request.json().catch(() => ({})) as { password?: unknown; fileId?: unknown; mode?: unknown }
@@ -53,10 +57,41 @@ export async function POST(request: Request, { params }: RouteContext) {
         if ((share.file && share.file.isTrash) || (share.folder && share.folder.isTrash) || (!share.file && !share.folder)) {
             return NextResponse.json({ error: 'This shared item is no longer available.' }, { status: 404 })
         }
+        let accessToken: string | undefined
         if (share.passwordHash) {
-            const password = typeof body.password === 'string' ? body.password : ''
-            if (!password || !(await bcrypt.compare(password, share.passwordHash))) {
-                return NextResponse.json({ error: 'Enter the password to open this link.', requiresPassword: true }, { status: 401 })
+            const rootFileId = share.file?.id ?? share.folder?.id
+            const cookieName = `${ACCESS_COOKIE}:${token}`
+            const secret = process.env.NEXTAUTH_SECRET?.trim() || process.env.AUTH_SECRET?.trim()
+            if (!secret) {
+                console.error('Unable to authorize password-protected share: authentication secret is not configured.')
+                return NextResponse.json({ error: 'Unable to authorize this shared item.' }, { status: 500 })
+            }
+
+            const existingToken = request.cookies.get(ACCESS_COOKIE)?.value
+            let verified = false
+            if (existingToken) {
+                try {
+                    const claims = await decode({ token: existingToken, secret, salt: cookieName })
+                    verified = claims?.shareId === share.id &&
+                        claims.fileId === rootFileId &&
+                        claims.verified === true
+                } catch {
+                    verified = false
+                }
+            }
+
+            if (!verified) {
+                const password = typeof body.password === 'string' ? body.password : ''
+                if (!password || !(await bcrypt.compare(password, share.passwordHash))) {
+                    return NextResponse.json({ error: 'Enter the password to open this link.', requiresPassword: true }, { status: 401 })
+                }
+
+                accessToken = await encode({
+                    token: { fileId: rootFileId, verified: true, shareId: share.id },
+                    secret,
+                    salt: cookieName,
+                    maxAge: ACCESS_TOKEN_TTL,
+                })
             }
         }
 
@@ -79,32 +114,46 @@ export async function POST(request: Request, { params }: RouteContext) {
                     data: { downloadCount: { increment: 1 } },
                 })
             }
-            return NextResponse.json({ url })
+            return createShareResponse({ url }, token, accessToken)
         }
 
         if (share.file) {
             const file = sharedFilePayload(share.file)
-            return NextResponse.json({
+            return createShareResponse({
                 type: 'file',
                 name: file.name,
                 file: { id: file.id, name: file.name, size: file.size, mimeType: file.mimeType },
-            })
+            }, token, accessToken)
         }
 
         const folder = share.folder!
         const files = await getFolderFiles(folder.id, folder.userId)
-        return NextResponse.json({
+        return createShareResponse({
             type: 'folder',
             name: folder.name,
             files: files.map((file) => {
                 const payload = sharedFilePayload(file)
                 return { id: payload.id, name: payload.name, size: payload.size, mimeType: payload.mimeType }
             }),
-        })
+        }, token, accessToken)
     } catch (error) {
         console.error('Unable to access public share:', error)
         return NextResponse.json({ error: 'Unable to open this shared item.' }, { status: 500 })
     }
+}
+
+function createShareResponse(data: unknown, shareToken: string, accessToken?: string) {
+    const response = NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } })
+    if (accessToken) {
+        response.cookies.set(ACCESS_COOKIE, accessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: `/api/public/share/${encodeURIComponent(shareToken)}`,
+            maxAge: ACCESS_TOKEN_TTL,
+        })
+    }
+    return response
 }
 
 async function getFolderFiles(folderId: string, userId: string) {
