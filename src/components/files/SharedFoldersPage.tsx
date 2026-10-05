@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Folder, FolderPlus, Upload } from 'lucide-react'
+import { ArrowLeft, Folder, FolderPlus, FolderUp, Upload } from 'lucide-react'
 import { FileExplorer, type DriveFile } from '@/components/files/FileExplorer'
 import { FilePreviewModal } from '@/components/files/FilePreviewModal'
 import { VersionHistoryModal } from '@/components/files/VersionHistoryModal'
@@ -79,6 +79,15 @@ export function SharedFoldersPage() {
         return () => window.removeEventListener('drivea:file-uploaded', handleFileUploaded)
     }, [currentFolder?.id])
 
+    useEffect(() => {
+        function handleFoldersCreated(event: Event) {
+            const parentId = (event as CustomEvent<{ parentId: string | null }>).detail?.parentId ?? null
+            if (parentId === currentFolder?.id) setReloadToken((current) => current + 1)
+        }
+        window.addEventListener('drivea:folders-created', handleFoldersCreated)
+        return () => window.removeEventListener('drivea:folders-created', handleFoldersCreated)
+    }, [currentFolder?.id])
+
     function openFolder(folder: SharedFolder) {
         setFolderStack((current) => [...current, folder])
     }
@@ -115,7 +124,7 @@ export function SharedFoldersPage() {
         setReloadToken((current) => current + 1)
     }
 
-    function renderContent(openFileDialog: () => void) {
+    function renderContent(openFileDialog: () => void, openFolderDialog: () => void) {
         return (
             <div className="space-y-6">
                 <header className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-800">
@@ -134,6 +143,9 @@ export function SharedFoldersPage() {
                                 <>
                                     <button type="button" onClick={openFileDialog} className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f15a24] hover:text-[#f15a24] dark:border-slate-700 dark:bg-[#131922] dark:text-slate-200">
                                         <Upload className="h-4 w-4" /> Upload files
+                                    </button>
+                                    <button type="button" onClick={openFolderDialog} className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f15a24] hover:text-[#f15a24] dark:border-slate-700 dark:bg-[#131922] dark:text-slate-200">
+                                        <FolderUp className="h-4 w-4" /> Upload folder
                                     </button>
                                     <button type="button" onClick={() => void createSubfolder()} className="inline-flex items-center gap-2 rounded-md bg-[#f15a24] px-3 py-2 text-sm font-semibold text-white hover:bg-[#d94e1b]">
                                         <FolderPlus className="h-4 w-4" /> New folder
@@ -226,5 +238,5 @@ export function SharedFoldersPage() {
     if (currentFolder && canEdit) {
         return <UploadDropzone folderId={currentFolder.id}>{renderContent}</UploadDropzone>
     }
-    return renderContent(() => undefined)
+    return renderContent(() => undefined, () => undefined)
 }

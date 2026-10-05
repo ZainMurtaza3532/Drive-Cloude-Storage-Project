@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, FolderPlus, LockKeyhole, Plus, Upload, AlertCircle, RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, FolderPlus, FolderUp, LockKeyhole, Plus, Upload, AlertCircle, RefreshCw, X } from 'lucide-react'
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs'
 import { CreateFolderModal } from '@/components/folders/CreateFolderModal'
 import { ManageAccessModal } from '@/components/folders/ManageAccessModal'
@@ -112,6 +112,15 @@ function DashboardContent() {
     window.addEventListener('drivea:file-uploaded', handleFileUploaded)
     return () => window.removeEventListener('drivea:file-uploaded', handleFileUploaded)
   }, [])
+
+  useEffect(() => {
+    function handleFoldersCreated(event: Event) {
+      const parentId = (event as CustomEvent<{ parentId: string | null }>).detail?.parentId ?? null
+      if (parentId === (folderId || null)) void refreshFolders()
+    }
+    window.addEventListener('drivea:folders-created', handleFoldersCreated)
+    return () => window.removeEventListener('drivea:folders-created', handleFoldersCreated)
+  }, [folderId])
 
   async function refreshFolders() {
     const query = folderId ? `?parentId=${encodeURIComponent(folderId)}` : ''
@@ -323,7 +332,7 @@ function DashboardContent() {
       folderId={folderId}
       disabled={folderPermission === 'VIEWER'}
     >
-      {(openFileDialog) => (
+      {(openFileDialog, openFolderDialog) => (
         <div className="flex h-full flex-col">
           {/* Top Bar Actions & Breadcrumb Row */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -351,6 +360,16 @@ function DashboardContent() {
               >
                 <Upload className="h-4 w-4 text-[#f15a24]" />
                 <span>Upload files</span>
+              </button>}
+
+              {folderPermission !== 'VIEWER' && <button
+                id="trigger-upload-folder"
+                type="button"
+                onClick={openFolderDialog}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131922] px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-[#f15a24] hover:text-[#f15a24] dark:hover:border-[#f15a24] dark:hover:text-[#ff7847] transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+              >
+                <FolderUp className="h-4 w-4 text-[#f15a24]" />
+                <span>Upload folder</span>
               </button>}
 
               {vaultFolderId ? (
