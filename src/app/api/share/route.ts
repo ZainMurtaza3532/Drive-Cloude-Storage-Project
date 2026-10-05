@@ -15,6 +15,15 @@ function getResource(body: Record<string, unknown>) {
     return { type: type as ResourceType, id }
 }
 
+function isSchemaMismatch(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2021' || error.code === 'P2022')
+}
+
+function shareWhere(type: ResourceType, id: string) {
+    return type === 'file' ? { fileId: id } : { folderId: id }
+}
+
 export async function GET(request: Request) {
     try {
         const session = await getServerSession(authOptions)
@@ -32,19 +41,35 @@ export async function GET(request: Request) {
             : await prisma.folder.findFirst({ where: { id, userId: session.user.id, isTrash: false }, select: { id: true } })
         if (!resource) return NextResponse.json({ error: 'File or folder not found.' }, { status: 404 })
 
-        const share = await prisma.shareLink.findFirst({
-            where: { ...(type === 'file' ? { fileId: id } : { folderId: id }), isPublic: true },
-            select: { token: true, expiresAt: true, passwordHash: true, maxDownloads: true, downloadCount: true, viewCount: true },
-        })
-        return NextResponse.json({
-            enabled: Boolean(share),
-            token: share?.token ?? null,
-            expiresAt: share?.expiresAt?.toISOString() ?? null,
-            passwordProtected: Boolean(share?.passwordHash),
-            maxDownloads: share?.maxDownloads ?? null,
-            downloadCount: share?.downloadCount ?? 0,
-            viewCount: share?.viewCount ?? 0,
-        })
+        const where = { ...shareWhere(type, id), isPublic: true }
+        try {
+            const share = await prisma.shareLink.findFirst({
+                where,
+                select: { token: true, expiresAt: true, passwordHash: true, maxDownloads: true, downloadCount: true, viewCount: true },
+            })
+            return NextResponse.json({
+                enabled: Boolean(share),
+                token: share?.token ?? null,
+                expiresAt: share?.expiresAt?.toISOString() ?? null,
+                passwordProtected: Boolean(share?.passwordHash),
+                maxDownloads: share?.maxDownloads ?? null,
+                downloadCount: share?.downloadCount ?? 0,
+                viewCount: share?.viewCount ?? 0,
+                advancedSettingsAvailable: true,
+            })
+        } catch (error) {
+            if (!isSchemaMismatch(error)) throw error
+            console.warn('Advanced share columns are unavailable; loading basic link settings.')
+            const share = await prisma.shareLink.findFirst({
+                where,
+                select: { token: true },
+            })
+            return NextResponse.json({
+                enabled: Boolean(share),
+                token: share?.token ?? null,
+                advancedSettingsAvailable: false,
+            })
+        }
     } catch (error) {
         console.error('Unable to load share link:', error)
         return NextResponse.json({ error: 'Unable to load sharing settings.' }, { status: 500 })
@@ -70,12 +95,9 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Password protection setting is required.' }, { status: 400 })
         }
 
-        const where = resource.type === 'file' ? { fileId: resource.id } : { folderId: resource.id }
-        const existing = await prisma.shareLink.findFirst({
-            where,
-            select: { id: true, passwordHash: true },
-        })
+        const where = shareWhere(resource.type, resource.id)
         if (!body.enabled) {
+            const existing = await prisma.shareLink.findFirst({ where, select: { id: true } })
             if (existing) await prisma.shareLink.delete({ where: { id: existing.id } })
             return NextResponse.json({ enabled: false })
         }
@@ -102,46 +124,95 @@ export async function POST(request: Request) {
         }
         const passwordEnabled = body.passwordEnabled === true
         const password = typeof body.password === 'string' ? body.password : ''
-        const changingPassword = passwordEnabled && password.length > 0
-        if (passwordEnabled && (!existing?.passwordHash || changingPassword) && [...password].length < 8) {
+        if (passwordEnabled && password && [...password].length < 8) {
             return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
         }
         if (Buffer.byteLength(password, 'utf8') > 72) {
             return NextResponse.json({ error: 'Password must be 72 UTF-8 bytes or fewer.' }, { status: 400 })
         }
 
-        const passwordHash = passwordEnabled
-            ? (password ? await bcrypt.hash(password, 10) : existing?.passwordHash ?? null)
-            : null
-        const passwordChanged = passwordEnabled !== Boolean(existing?.passwordHash) || changingPassword
-        const data = {
-            expiresAt: expiresAtValue,
-            passwordHash,
-            maxDownloads,
-            isPublic: true,
-            ...(passwordChanged ? { token: randomUUID() } : {}),
-        }
-        const share = existing
-            ? await prisma.shareLink.update({ where: { id: existing.id }, data, select: { token: true, expiresAt: true, passwordHash: true, maxDownloads: true, downloadCount: true, viewCount: true } })
-            : await prisma.shareLink.create({
-                data: { ...data, ...(resource.type === 'file' ? { fileId: resource.id } : { folderId: resource.id }) },
-                select: { token: true, expiresAt: true, passwordHash: true, maxDownloads: true, downloadCount: true, viewCount: true },
+        const advancedSettingsRequested = Boolean(expiresAtValue || maxDownloads !== null || passwordEnabled)
+        try {
+            const existing = await prisma.shareLink.findFirst({
+                where,
+                select: { id: true, passwordHash: true },
             })
+            if (passwordEnabled && !existing?.passwordHash && !password) {
+                return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
+            }
 
-        return NextResponse.json({
-            enabled: true,
-            token: share.token,
-            expiresAt: share.expiresAt?.toISOString() ?? null,
-            passwordProtected: Boolean(share.passwordHash),
-            maxDownloads: share.maxDownloads,
-            downloadCount: share.downloadCount,
-            viewCount: share.viewCount,
-        })
+            const changingPassword = passwordEnabled && password.length > 0
+            const passwordHash = passwordEnabled
+                ? (password ? await bcrypt.hash(password, 10) : existing?.passwordHash ?? null)
+                : null
+            const passwordChanged = passwordEnabled !== Boolean(existing?.passwordHash) || changingPassword
+            const data = {
+                expiresAt: expiresAtValue,
+                passwordHash,
+                maxDownloads,
+                isPublic: true,
+                ...(passwordChanged ? { token: randomUUID() } : {}),
+            }
+            const share = existing
+                ? await prisma.shareLink.update({
+                    where: { id: existing.id },
+                    data,
+                    select: { token: true, expiresAt: true, passwordHash: true, maxDownloads: true, downloadCount: true, viewCount: true },
+                })
+                : await prisma.shareLink.create({
+                    data: { ...data, ...(resource.type === 'file' ? { fileId: resource.id } : { folderId: resource.id }) },
+                    select: { token: true, expiresAt: true, passwordHash: true, maxDownloads: true, downloadCount: true, viewCount: true },
+                })
+
+            return NextResponse.json({
+                enabled: true,
+                token: share.token,
+                expiresAt: share.expiresAt?.toISOString() ?? null,
+                passwordProtected: Boolean(share.passwordHash),
+                maxDownloads: share.maxDownloads,
+                downloadCount: share.downloadCount,
+                viewCount: share.viewCount,
+                advancedSettingsAvailable: true,
+            })
+        } catch (error) {
+            if (!isSchemaMismatch(error)) throw error
+            console.warn('Advanced share columns are unavailable; attempting a basic share link.')
+            if (advancedSettingsRequested) {
+                return NextResponse.json({
+                    error: 'Basic sharing can still be enabled, but expiry, password protection, and download limits require the latest database migration.',
+                }, { status: 503 })
+            }
+
+            const existing = await prisma.shareLink.findFirst({
+                where,
+                select: { id: true, token: true },
+            })
+            const share = existing
+                ? await prisma.shareLink.update({
+                    where: { id: existing.id },
+                    data: { isPublic: true },
+                    select: { token: true },
+                })
+                : await prisma.shareLink.create({
+                    data: {
+                        ...(resource.type === 'file' ? { fileId: resource.id } : { folderId: resource.id }),
+                        token: randomUUID(),
+                        isPublic: true,
+                    },
+                    select: { token: true },
+                })
+            return NextResponse.json({
+                enabled: true,
+                token: share.token,
+                advancedSettingsAvailable: false,
+                warning: 'Basic link created. Expiry, password protection, and download limits are unavailable until the database migration is applied.',
+            })
+        }
     } catch (error) {
         console.error('Unable to update share link:', error)
-        if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2021', 'P2022'].includes(error.code)) {
+        if (isSchemaMismatch(error)) {
             return NextResponse.json({
-                error: 'Sharing settings are not fully applied to the database. Apply the latest Prisma schema changes, then retry.',
+                error: 'The share-link database table is unavailable. Apply the Prisma database migrations, then retry.',
             }, { status: 503 })
         }
         return NextResponse.json({ error: 'Unable to update this share link.' }, { status: 500 })

@@ -92,7 +92,7 @@ npx prisma migrate dev --name init
 
 Commit the generated `prisma/migrations` directory. Apply reviewed migrations to production with `npx prisma migrate deploy` from deployment tooling, using a production database URL kept in the deployment environment. Back up existing production data before schema changes. Never run `prisma migrate reset` or `prisma db push --force-reset` against production.
 
-The migration `20261005102000_add_share_link_controls` adds the public-share download limit and view-count columns to an existing `ShareLink` table. Apply it to the deployed database with `npx prisma migrate deploy` before using those share settings. Its `ADD COLUMN IF NOT EXISTS` statements also allow deployment when those columns were already added manually.
+The migrations `20261005102000_add_share_link_controls` and `20261005104500_ensure_share_link_advanced_columns` add any missing advanced share-control columns to an existing `ShareLink` table. Apply them to the deployed database with `npx prisma migrate deploy` to enable expiry, password protection, and download limits. Their `ADD COLUMN IF NOT EXISTS` statements allow deployment when columns were already added manually. Until then, the app supports basic public links and preserves any existing password field it can read; it will not silently drop newly requested advanced protections.
 
 ## Uploads and Redis
 

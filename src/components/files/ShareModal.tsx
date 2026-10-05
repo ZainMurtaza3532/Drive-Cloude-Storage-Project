@@ -12,6 +12,8 @@ type ShareSettingsResponse = {
     maxDownloads?: number | null
     downloadCount?: number
     viewCount?: number
+    advancedSettingsAvailable?: boolean
+    warning?: string
     error?: string
 }
 
@@ -55,6 +57,7 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
     const [viewCount, setViewCount] = useState(0)
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
+    const [advancedSettingsAvailable, setAdvancedSettingsAvailable] = useState(true)
     const [error, setError] = useState('')
     const [toast, setToast] = useState('')
 
@@ -70,6 +73,7 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
         setMaxDownloads(null)
         setDownloadCount(0)
         setViewCount(0)
+        setAdvancedSettingsAvailable(true)
         setError('')
         setToast('')
         setLoading(true)
@@ -86,6 +90,7 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
                 setMaxDownloads(data.maxDownloads ?? null)
                 setDownloadCount(data.downloadCount ?? 0)
                 setViewCount(data.viewCount ?? 0)
+                setAdvancedSettingsAvailable(data.advancedSettingsAvailable !== false)
             })
             .catch((loadError) => {
                 if (loadError instanceof DOMException && loadError.name === 'AbortError') return
@@ -142,7 +147,8 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
             setMaxDownloads(data.maxDownloads ?? null)
             setDownloadCount(data.downloadCount ?? 0)
             setViewCount(data.viewCount ?? 0)
-            setToast(data.enabled ? 'Sharing settings saved.' : 'Link sharing turned off.')
+            setAdvancedSettingsAvailable(data.advancedSettingsAvailable !== false)
+            setToast(data.warning ?? (data.enabled ? 'Sharing settings saved.' : 'Link sharing turned off.'))
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : 'Unable to save sharing settings.')
         } finally {
@@ -177,6 +183,7 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
                     </label>
 
                     {enabled && <div className="space-y-4">
+                        {!advancedSettingsAvailable ? <p role="status" className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">Advanced sharing settings cannot be read or changed until the database migration is applied. Basic links can still be shared; any existing password protection remains in effect.</p> : <>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Link expiry
                             <select value={expiryOption} onChange={(event) => chooseExpiry(event.target.value as ExpiryOption)} className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
                                 <option value="never">Never</option><option value="1-hour">1 hour</option><option value="24-hours">24 hours</option><option value="7-days">7 days</option><option value="custom">Custom date and time</option>
@@ -193,10 +200,11 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
                         {passwordEnabled && <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" placeholder={token ? 'Leave blank to keep current password' : 'Set a password (8+ characters)'} className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />}
                         <p className="text-xs text-slate-500 dark:text-slate-400">{viewCount} link {viewCount === 1 ? 'view' : 'views'}</p>
                         {shareUrl && <div className="flex min-w-0 items-center gap-2"><input readOnly value={shareUrl} aria-label="Share link" className="min-w-0 flex-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" /><button type="button" onClick={copyLink} aria-label="Copy share link" title="Copy link" className="flex h-9 w-10 shrink-0 items-center justify-center rounded-md bg-[#f15a24] text-white hover:bg-[#d94e1b]"><Copy className="h-4 w-4" /></button></div>}
+                        </>}
                     </div>}
 
                     {error && <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
-                    {toast && <p role="status" className="flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400"><Check className="h-4 w-4" />{toast}</p>}
+                    {toast && <p role="status" className={`flex items-center gap-1.5 text-sm ${advancedSettingsAvailable ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-200'}`}><Check className="h-4 w-4" />{toast}</p>}
                     <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
                         <button type="button" onClick={onClose} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
                         <button type="button" onClick={() => void save()} disabled={saving} className="rounded-md bg-[#f15a24] px-3 py-2 text-sm font-semibold text-white hover:bg-[#d94e1b] disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>

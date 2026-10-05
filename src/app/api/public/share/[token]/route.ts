@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import { decode, encode } from 'next-auth/jwt'
+import { Prisma } from '@prisma/client'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { NextRequest, NextResponse } from 'next/server'
 import { contentDispositionFilename } from '@/lib/files'
@@ -16,6 +17,11 @@ type SharedFile = {
     name: string
     isTrash?: boolean
     versions: Array<{ size: bigint; mimeType: string; s3Key: string }>
+}
+
+function isSchemaMismatch(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2021' || error.code === 'P2022')
 }
 
 function sharedFilePayload(file: SharedFile) {
@@ -40,14 +46,113 @@ const sharedFileSelect = {
     },
 } as const
 
+async function readOptionalShareField<T>(
+    query: Promise<{ value: T } | null>,
+    field: string,
+    fallback: T,
+) {
+    try {
+        return { value: (await query)?.value ?? fallback, available: true }
+    } catch (error) {
+        if (!isSchemaMismatch(error)) throw error
+        console.warn(`Share-link field "${field}" is unavailable in the database.`)
+        return { value: fallback, available: false }
+    }
+}
+
 async function findShare(token: string) {
-    return prisma.shareLink.findUnique({
-        where: { token },
-        include: {
-            file: { select: sharedFileSelect },
-            folder: { select: { id: true, name: true, userId: true, isTrash: true } },
-        },
-    })
+    try {
+        const share = await prisma.shareLink.findUnique({
+            where: { token },
+            select: {
+                id: true,
+                token: true,
+                isPublic: true,
+                passwordHash: true,
+                expiresAt: true,
+                maxDownloads: true,
+                downloadCount: true,
+                viewCount: true,
+                file: { select: sharedFileSelect },
+                folder: { select: { id: true, name: true, userId: true, isTrash: true } },
+            },
+        })
+        return share
+            ? {
+                ...share,
+                advancedSettingsAvailable: true,
+                expiresAtAvailable: true,
+                maxDownloadsAvailable: true,
+                downloadCountAvailable: true,
+                viewCountAvailable: true,
+            }
+            : null
+    } catch (error) {
+        if (!isSchemaMismatch(error)) throw error
+        console.warn('Advanced share columns are unavailable; opening this as a basic public link.')
+        const share = await prisma.shareLink.findUnique({
+            where: { token },
+            select: {
+                id: true,
+                token: true,
+                isPublic: true,
+                file: { select: sharedFileSelect },
+                folder: { select: { id: true, name: true, userId: true, isTrash: true } },
+            },
+        })
+        if (!share) return null
+        const [password, expiry, limit, downloads, views] = await Promise.all([
+            readOptionalShareField(
+                prisma.shareLink.findUnique({ where: { token }, select: { passwordHash: true } })
+                    .then((row) => row ? { value: row.passwordHash } : null),
+                'passwordHash',
+                null,
+            ),
+            readOptionalShareField(
+                prisma.shareLink.findUnique({ where: { token }, select: { expiresAt: true } })
+                    .then((row) => row ? { value: row.expiresAt } : null),
+                'expiresAt',
+                null,
+            ),
+            readOptionalShareField(
+                prisma.shareLink.findUnique({ where: { token }, select: { maxDownloads: true } })
+                    .then((row) => row ? { value: row.maxDownloads } : null),
+                'maxDownloads',
+                null,
+            ),
+            readOptionalShareField(
+                prisma.shareLink.findUnique({ where: { token }, select: { downloadCount: true } })
+                    .then((row) => row ? { value: row.downloadCount } : null),
+                'downloadCount',
+                0,
+            ),
+            readOptionalShareField(
+                prisma.shareLink.findUnique({ where: { token }, select: { viewCount: true } })
+                    .then((row) => row ? { value: row.viewCount } : null),
+                'viewCount',
+                0,
+            ),
+        ])
+        return {
+            ...share,
+            passwordHash: password.value,
+            expiresAt: expiry.value,
+            maxDownloads: limit.value,
+            downloadCount: downloads.value,
+            viewCount: views.value,
+            advancedSettingsAvailable: [
+                password.available,
+                expiry.available,
+                limit.available,
+                downloads.available,
+                views.available,
+            ].every(Boolean),
+            expiresAtAvailable: expiry.available,
+            maxDownloadsAvailable: limit.available,
+            downloadCountAvailable: downloads.available,
+            viewCountAvailable: views.available,
+        }
+    }
 }
 
 async function hasValidAccessToken(request: NextRequest, share: NonNullable<Awaited<ReturnType<typeof findShare>>>, token: string) {
@@ -77,7 +182,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         }
 
         const share = await findShare(token)
-        if (!share || !share.isPublic || (share.expiresAt && share.expiresAt <= new Date())) {
+        if (!share || !share.isPublic || (share.expiresAtAvailable && share.expiresAt && share.expiresAt <= new Date())) {
             return NextResponse.json({ error: 'This share link is invalid or has expired.' }, { status: 404 })
         }
         if ((share.file && share.file.isTrash) || (share.folder && share.folder.isTrash) || (!share.file && !share.folder)) {
@@ -93,18 +198,25 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         const file = files.find((item) => item.id === fileId)
         if (!file?.s3Key) return NextResponse.json({ error: 'This file is not part of the shared item.' }, { status: 404 })
         if (!BUCKET_NAME) return NextResponse.json({ error: 'S3 storage is not configured.' }, { status: 500 })
+        if (mode === 'download' && share.maxDownloadsAvailable && share.maxDownloads !== null && !share.downloadCountAvailable) {
+            return NextResponse.json({ error: 'Download limits are temporarily unavailable. Apply the latest database migration and retry.' }, { status: 503 })
+        }
 
-        if (mode === 'download') {
+        if (mode === 'download' && share.downloadCountAvailable) {
             const now = new Date()
+            const downloadConditions: Prisma.ShareLinkWhereInput[] = []
+            if (share.expiresAtAvailable) {
+                downloadConditions.push({ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] })
+            }
+            if (share.maxDownloadsAvailable && share.maxDownloads !== null) {
+                downloadConditions.push({ downloadCount: { lt: share.maxDownloads } })
+            }
             const reserved = await prisma.shareLink.updateMany({
                 where: {
                     id: share.id,
                     isPublic: true,
-                    maxDownloads: share.maxDownloads,
-                    AND: [
-                        { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-                        ...(share.maxDownloads === null ? [] : [{ downloadCount: { lt: share.maxDownloads } }]),
-                    ],
+                    ...(share.maxDownloadsAvailable ? { maxDownloads: share.maxDownloads } : {}),
+                    ...(downloadConditions.length ? { AND: downloadConditions } : {}),
                 },
                 data: { downloadCount: { increment: 1 } },
             })
@@ -150,7 +262,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         const body = await request.json().catch(() => ({})) as { password?: unknown; fileId?: unknown; mode?: unknown }
         const share = await findShare(token)
 
-        if (!share || !share.isPublic || (share.expiresAt && share.expiresAt <= new Date())) {
+        if (!share || !share.isPublic || (share.expiresAtAvailable && share.expiresAt && share.expiresAt <= new Date())) {
             return NextResponse.json({ error: 'This share link is invalid or has expired.' }, { status: 404 })
         }
         if ((share.file && share.file.isTrash) || (share.folder && share.folder.isTrash) || (!share.file && !share.folder)) {
@@ -206,10 +318,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
             return createShareResponse({ url }, token, accessToken)
         }
 
-        await prisma.shareLink.update({
-            where: { id: share.id },
-            data: { viewCount: { increment: 1 } },
-        })
+        if (share.viewCountAvailable) {
+            await prisma.shareLink.update({
+                where: { id: share.id },
+                data: { viewCount: { increment: 1 } },
+            })
+        }
 
         if (share.file) {
             const file = sharedFilePayload(share.file)
