@@ -9,6 +9,7 @@ Drive Storage is a web app built with Next.js App Router, Prisma, and PostgreSQL
 - Email/password authentication with optional Google and GitHub sign-in
 - Per-user files and folders, storage quotas, starring, trash, and search
 - Direct-to-storage uploads using presigned S3-compatible requests and multipart transfers
+- Public share links with expiry, bcrypt password protection, and enforced download limits
 - Folder sharing with viewer/editor roles, public share links, comments, and version history
 - Browser-side encrypted Vault
 - Optional Stripe billing for the 100 GB Pro plan

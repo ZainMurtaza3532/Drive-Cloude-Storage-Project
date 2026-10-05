@@ -9,7 +9,25 @@ type ShareSettingsResponse = {
     token?: string | null
     expiresAt?: string | null
     passwordProtected?: boolean
+    maxDownloads?: number | null
+    downloadCount?: number
+    viewCount?: number
     error?: string
+}
+
+type ExpiryOption = 'never' | '1-hour' | '24-hours' | '7-days' | 'custom'
+const expiryDurations: Partial<Record<ExpiryOption, number>> = {
+    '1-hour': 60 * 60_000,
+    '24-hours': 24 * 60 * 60_000,
+    '7-days': 7 * 24 * 60 * 60_000,
+}
+
+function toLocalDateTimeValue(value: string | null | undefined) {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    return local.toISOString().slice(0, 16)
 }
 
 async function readResponse<T extends ShareSettingsResponse>(response: Response): Promise<T> {
@@ -31,6 +49,10 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
     const [passwordEnabled, setPasswordEnabled] = useState(false)
     const [password, setPassword] = useState('')
     const [expiresAt, setExpiresAt] = useState('')
+    const [expiryOption, setExpiryOption] = useState<ExpiryOption>('never')
+    const [maxDownloads, setMaxDownloads] = useState<number | null>(null)
+    const [downloadCount, setDownloadCount] = useState(0)
+    const [viewCount, setViewCount] = useState(0)
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
@@ -44,6 +66,10 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
         setPasswordEnabled(false)
         setPassword('')
         setExpiresAt('')
+        setExpiryOption('never')
+        setMaxDownloads(null)
+        setDownloadCount(0)
+        setViewCount(0)
         setError('')
         setToast('')
         setLoading(true)
@@ -55,7 +81,11 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
                 setEnabled(Boolean(data.enabled))
                 setToken(data.token ?? null)
                 setPasswordEnabled(Boolean(data.passwordProtected))
-                setExpiresAt(data.expiresAt ? new Date(data.expiresAt).toISOString().slice(0, 16) : '')
+                setExpiresAt(toLocalDateTimeValue(data.expiresAt))
+                setExpiryOption(data.expiresAt ? 'custom' : 'never')
+                setMaxDownloads(data.maxDownloads ?? null)
+                setDownloadCount(data.downloadCount ?? 0)
+                setViewCount(data.viewCount ?? 0)
             })
             .catch((loadError) => {
                 if (loadError instanceof DOMException && loadError.name === 'AbortError') return
@@ -70,10 +100,24 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
 
     const shareUrl = token ? `${typeof window === 'undefined' ? '' : window.location.origin}/share/${token}` : ''
 
+    function chooseExpiry(option: ExpiryOption) {
+        setExpiryOption(option)
+        const duration = expiryDurations[option]
+        setExpiresAt(duration !== undefined ? toLocalDateTimeValue(new Date(Date.now() + duration).toISOString()) : option === 'custom' ? expiresAt : '')
+    }
+
     async function save() {
         setSaving(true)
         setError('')
         try {
+            if (expiryOption === 'custom' && !expiresAt) {
+                throw new Error('Choose a custom expiry date and time.')
+            }
+            const expiresAtValue = expiryDurations[expiryOption]
+                ? new Date(Date.now() + expiryDurations[expiryOption]!).toISOString()
+                : expiryOption === 'custom' && expiresAt
+                    ? new Date(expiresAt).toISOString()
+                    : null
             const response = await fetch('/api/share', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -83,7 +127,8 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
                     enabled,
                     passwordEnabled,
                     password,
-                    expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+                    expiresAt: expiresAtValue,
+                    maxDownloads,
                 }),
             })
             const data = await readResponse<ShareSettingsResponse>(response)
@@ -92,6 +137,11 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
             setToken(data.token ?? null)
             setPasswordEnabled(data.passwordProtected ?? false)
             setPassword('')
+            setExpiresAt(toLocalDateTimeValue(data.expiresAt))
+            setExpiryOption(data.expiresAt ? 'custom' : 'never')
+            setMaxDownloads(data.maxDownloads ?? null)
+            setDownloadCount(data.downloadCount ?? 0)
+            setViewCount(data.viewCount ?? 0)
             setToast(data.enabled ? 'Sharing settings saved.' : 'Link sharing turned off.')
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : 'Unable to save sharing settings.')
@@ -127,11 +177,21 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
                     </label>
 
                     {enabled && <div className="space-y-4">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Link expiry <span className="font-normal text-slate-400">(optional)</span>
-                            <input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} min={new Date().toISOString().slice(0, 16)} className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Link expiry
+                            <select value={expiryOption} onChange={(event) => chooseExpiry(event.target.value as ExpiryOption)} className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                                <option value="never">Never</option><option value="1-hour">1 hour</option><option value="24-hours">24 hours</option><option value="7-days">7 days</option><option value="custom">Custom date and time</option>
+                            </select>
+                            {expiryOption === 'custom' && <input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} min={toLocalDateTimeValue(new Date().toISOString())} className="mt-2 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />}
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Download limit
+                            <select value={maxDownloads ?? ''} onChange={(event) => setMaxDownloads(event.target.value ? Number(event.target.value) : null)} className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+                                <option value="">Unlimited</option><option value="1">1 download</option><option value="5">5 downloads</option><option value="10">10 downloads</option>
+                            </select>
+                            {maxDownloads !== null && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{downloadCount} of {maxDownloads} downloads used</span>}
                         </label>
                         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200"><input type="checkbox" checked={passwordEnabled} onChange={(event) => setPasswordEnabled(event.target.checked)} className="h-4 w-4 accent-[#f15a24]" /><LockKeyhole className="h-4 w-4 text-slate-500" />Password protection</label>
                         {passwordEnabled && <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" placeholder={token ? 'Leave blank to keep current password' : 'Set a password (8+ characters)'} className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900" />}
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{viewCount} link {viewCount === 1 ? 'view' : 'views'}</p>
                         {shareUrl && <div className="flex min-w-0 items-center gap-2"><input readOnly value={shareUrl} aria-label="Share link" className="min-w-0 flex-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" /><button type="button" onClick={copyLink} aria-label="Copy share link" title="Copy link" className="flex h-9 w-10 shrink-0 items-center justify-center rounded-md bg-[#f15a24] text-white hover:bg-[#d94e1b]"><Copy className="h-4 w-4" /></button></div>}
                     </div>}
 
