@@ -541,7 +541,13 @@ function DashboardContent() {
             onVersionHistory={folderPermission === 'VIEWER' ? undefined : setVersionHistoryFile}
           />
 
-          <FilePreviewModal file={selectedFile} onClose={closePreview} />
+          <FilePreviewModal
+            file={selectedFile}
+            files={displayFiles}
+            onNavigate={setSelectedFile}
+            onShare={(file) => setShareResource({ id: file.id, name: file.name, type: 'file' })}
+            onClose={closePreview}
+          />
           <ShareModal resource={shareResource} onClose={() => setShareResource(null)} />
           <ManageAccessModal folder={accessFolder} onClose={() => setAccessFolder(null)} />
           <VersionHistoryModal

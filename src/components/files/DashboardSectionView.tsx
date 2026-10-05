@@ -329,7 +329,13 @@ export function DashboardSectionView({ section }: { section: DashboardSection })
                 </>
             )}
 
-            <FilePreviewModal file={selectedFile} onClose={() => setSelectedFile(null)} />
+            <FilePreviewModal
+                file={selectedFile}
+                files={files}
+                onNavigate={setSelectedFile}
+                onShare={section === 'trash' ? undefined : (file) => setShareResource({ id: file.id, name: file.name, type: 'file' })}
+                onClose={() => setSelectedFile(null)}
+            />
             <ShareModal resource={shareResource} onClose={() => setShareResource(null)} />
             <VersionHistoryModal
                 file={versionHistoryFile}

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { FileExplorer, type DriveFile } from '@/components/files/FileExplorer'
 import { FilePreviewModal } from '@/components/files/FilePreviewModal'
+import { ShareModal } from '@/components/files/ShareModal'
 
 type SearchResponse = { results?: DriveFile[]; error?: string }
 
@@ -15,6 +16,7 @@ export function SearchResultsPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState('')
     const [selectedFile, setSelectedFile] = useState<DriveFile | null>(null)
+    const [shareFile, setShareFile] = useState<DriveFile | null>(null)
 
     useEffect(() => {
         const controller = new AbortController()
@@ -61,7 +63,14 @@ export function SearchResultsPage() {
                     }}
                 />
             )}
-            <FilePreviewModal file={selectedFile} onClose={() => setSelectedFile(null)} />
+            <FilePreviewModal
+                file={selectedFile}
+                files={files}
+                onNavigate={setSelectedFile}
+                onShare={setShareFile}
+                onClose={() => setSelectedFile(null)}
+            />
+            <ShareModal resource={shareFile ? { id: shareFile.id, name: shareFile.name, type: 'file' } : null} onClose={() => setShareFile(null)} />
         </div>
     )
 }

@@ -221,7 +221,7 @@ export function SharedFoldersPage() {
                     </div>
                 )}
 
-                <FilePreviewModal file={selectedFile} onClose={() => setSelectedFile(null)} />
+                <FilePreviewModal file={selectedFile} files={files} onNavigate={setSelectedFile} onClose={() => setSelectedFile(null)} />
                 <VersionHistoryModal
                     file={versionHistoryFile}
                     canRestore={canEdit}

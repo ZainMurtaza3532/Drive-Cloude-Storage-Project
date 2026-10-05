@@ -40,6 +40,8 @@ export type DriveFile = {
   currentVersionNumber?: number
 }
 
+export type FileItem = DriveFile
+
 type FileExplorerProps = {
   files: DriveFile[]
   groups?: Array<{ label: string; files: DriveFile[] }>
