@@ -126,7 +126,7 @@ export function ShareModal({ resource, onClose }: { resource: ShareResource | nu
                     id: resource.id,
                     enabled,
                     passwordEnabled,
-                    password,
+                    password: password || null,
                     expiresAt: expiresAtValue,
                     maxDownloads,
                 }),

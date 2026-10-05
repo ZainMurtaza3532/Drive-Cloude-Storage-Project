@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import bcrypt from 'bcrypt'
+import { Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -86,9 +87,16 @@ export async function POST(request: Request) {
         if (expiresAtValue && (!Number.isFinite(expiresAtValue.getTime()) || expiresAtValue <= new Date())) {
             return NextResponse.json({ error: 'Expiry must be a future date.' }, { status: 400 })
         }
-        const maxDownloads = body.maxDownloads === null || body.maxDownloads === undefined
+        const maxDownloadsInput = typeof body.maxDownloads === 'string'
+            ? body.maxDownloads.trim().toLowerCase()
+            : body.maxDownloads
+        const maxDownloads = maxDownloadsInput === null || maxDownloadsInput === undefined || maxDownloadsInput === 'unlimited'
             ? null
-            : typeof body.maxDownloads === 'number' ? body.maxDownloads : Number.NaN
+            : typeof maxDownloadsInput === 'number'
+                ? maxDownloadsInput
+                : typeof maxDownloadsInput === 'string'
+                    ? Number(maxDownloadsInput.replace(/\s+downloads?$/, ''))
+                    : Number.NaN
         if (maxDownloads !== null && (!Number.isInteger(maxDownloads) || ![1, 5, 10].includes(maxDownloads))) {
             return NextResponse.json({ error: 'Download limit must be 1, 5, 10, or unlimited.' }, { status: 400 })
         }
@@ -131,6 +139,11 @@ export async function POST(request: Request) {
         })
     } catch (error) {
         console.error('Unable to update share link:', error)
+        if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2021', 'P2022'].includes(error.code)) {
+            return NextResponse.json({
+                error: 'Sharing settings are not fully applied to the database. Apply the latest Prisma schema changes, then retry.',
+            }, { status: 503 })
+        }
         return NextResponse.json({ error: 'Unable to update this share link.' }, { status: 500 })
     }
 }
