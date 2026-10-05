@@ -15,7 +15,7 @@ export function UploadDropzone({ folderId, disabled = false, children }: UploadD
     const { uploadFiles, reportUploadError } = useUpload()
     const folderInputRef = useRef<HTMLInputElement>(null)
 
-    async function uploadFilesWithStructure(files: File[], includeRoot: boolean) {
+    async function uploadFilesWithStructure(files: File[]) {
         if (!files.length) return
 
         const filePaths = files.map((file) => {
@@ -29,7 +29,7 @@ export function UploadDropzone({ folderId, disabled = false, children }: UploadD
             return { file, segments, valid }
         })
 
-        const hasDirectoryPaths = includeRoot || parsed.some(({ segments }) => segments.length > 1)
+        const hasDirectoryPaths = parsed.some(({ segments }) => segments.length > 1)
         if (!hasDirectoryPaths) {
             uploadFiles(files, folderId ?? undefined)
             return
@@ -41,34 +41,34 @@ export function UploadDropzone({ folderId, disabled = false, children }: UploadD
         })
         if (!validFiles.length) return
 
-        const directoryPaths = [...new Set(validFiles.map(({ segments }) => {
-            return segments.slice(0, -1).join('/')
-        }))]
-        const response = await fetch('/api/folders/import', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ parentId: folderId, paths: directoryPaths }),
-        })
-        const data = await response.json().catch(() => null) as { folders?: Record<string, string>; error?: string } | null
-        if (!response.ok || !data?.folders) {
-            const message = data?.error ?? 'Unable to create the selected folder structure.'
-            validFiles.forEach(({ file }) => reportUploadError(file, message))
-            return
+        const directoryPaths = [...new Set(validFiles
+            .map(({ segments }) => segments.slice(0, -1).join('/'))
+            .filter(Boolean))]
+        let folderIds: Record<string, string> = {}
+        if (directoryPaths.length) {
+            const response = await fetch('/api/folders/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parentId: folderId, paths: directoryPaths }),
+            })
+            const data = await response.json().catch(() => null) as { folders?: Record<string, string>; error?: string } | null
+            if (!response.ok || !data?.folders) {
+                const message = data?.error ?? 'Unable to create the selected folder structure.'
+                validFiles.forEach(({ file }) => reportUploadError(file, message))
+                return
+            }
+            folderIds = data.folders
         }
 
         const filesByFolder = new Map<string, File[]>()
         for (const { file, segments } of validFiles) {
             const directoryPath = segments.slice(0, -1).join('/')
-            const destinationId = data.folders[directoryPath]
-            if (!destinationId) {
-                reportUploadError(file, 'Unable to find the destination folder for this file.')
-                continue
-            }
+            const destinationId = folderIds[directoryPath] ?? folderId ?? ''
             const destinationFiles = filesByFolder.get(destinationId) ?? []
             destinationFiles.push(file)
             filesByFolder.set(destinationId, destinationFiles)
         }
-        filesByFolder.forEach((destinationFiles, destinationId) => uploadFiles(destinationFiles, destinationId))
+        filesByFolder.forEach((destinationFiles, destinationId) => uploadFiles(destinationFiles, destinationId || undefined))
         window.dispatchEvent(new CustomEvent('drivea:folders-created', {
             detail: { parentId: folderId },
         }))
@@ -78,7 +78,7 @@ export function UploadDropzone({ folderId, disabled = false, children }: UploadD
         const files = Array.from(event.currentTarget.files ?? [])
         event.currentTarget.value = ''
         try {
-            await uploadFilesWithStructure(files, true)
+            await uploadFilesWithStructure(files)
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unable to upload this folder.'
             files.forEach((file) => reportUploadError(file, message))
@@ -90,7 +90,7 @@ export function UploadDropzone({ folderId, disabled = false, children }: UploadD
         noClick: true,
         noKeyboard: true,
         onDrop: (acceptedFiles, rejectedFiles) => {
-            void uploadFilesWithStructure(acceptedFiles, false).catch((error: unknown) => {
+            void uploadFilesWithStructure(acceptedFiles).catch((error: unknown) => {
                 const message = error instanceof Error ? error.message : 'Unable to upload these files.'
                 acceptedFiles.forEach((file) => reportUploadError(file, message))
             })
@@ -107,6 +107,7 @@ export function UploadDropzone({ folderId, disabled = false, children }: UploadD
                 ref={(input) => {
                     folderInputRef.current = input
                     input?.setAttribute('webkitdirectory', '')
+                    input?.setAttribute('mozdirectory', '')
                     input?.setAttribute('directory', '')
                 }}
                 type="file"

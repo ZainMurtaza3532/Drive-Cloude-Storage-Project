@@ -93,7 +93,7 @@ Commit the generated `prisma/migrations` directory. Apply reviewed migrations to
 
 ## Uploads and Redis
 
-File contents are sent from the browser directly to private S3-compatible storage; Next.js routes handle authorization, metadata, and short-lived presigned URLs rather than proxying file bytes. Larger files use multipart upload routes. Upload completion checks ownership/access and storage quota. Users can select or drop folders to upload their files with nested directory structure preserved.
+File contents are sent from the browser directly to private S3-compatible storage; Next.js routes handle authorization, metadata, and short-lived presigned URLs rather than proxying file bytes. Larger files use multipart upload routes. Upload completion checks ownership/access and storage quota. Users can select or drop folders to upload their files with nested directory structure preserved. Uploads are queued with at most three files active at once and retry transient network failures twice.
 
 Distributed rate limiting is optional when Redis credentials are absent. BullMQ uses `REDIS_URL` and requires a standard Redis-compatible service; the Upstash REST URL/token cannot be substituted for that connection. Queue enqueue errors are logged without undoing a completed upload. See [ARCHITECTURE.md](ARCHITECTURE.md) for trust boundaries and deployment considerations.
 

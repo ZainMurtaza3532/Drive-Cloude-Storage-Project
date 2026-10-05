@@ -4,7 +4,7 @@ import { createContext, useContext, useRef, useState } from 'react'
 import { encryptVaultChunk, encryptVaultFile } from '@/lib/vault-crypto'
 import { MULTIPART_CHUNK_SIZE } from '@/lib/upload-constraints'
 
-export type UploadStatus = 'PREPARING' | 'UPLOADING' | 'PAUSED' | 'COMPLETED' | 'ERROR' | 'CANCELLED'
+export type UploadStatus = 'QUEUED' | 'PREPARING' | 'UPLOADING' | 'PAUSED' | 'COMPLETED' | 'ERROR' | 'CANCELLED'
 
 export interface UploadItem {
     id: string
@@ -58,6 +58,9 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     const activeUploads = useRef(new Map<string, ActiveUpload>())
     const multipartSessions = useRef(new Map<string, MultipartSession>())
     const encryptedPayloads = useRef(new Map<string, Blob>())
+    const uploadQueue = useRef<UploadItem[]>([])
+    const activeUploadCount = useRef(0)
+    const maxConcurrentUploads = 3
 
     function updateUpload(id: string, patch: Partial<UploadItem>) {
         setUploads((current) => current.map((upload) =>
@@ -65,116 +68,167 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         ))
     }
 
+    async function uploadFileAttempt(upload: UploadItem, activeUpload: ActiveUpload) {
+        let isVaultDestination = false
+        if (upload.folderId) {
+            const vaultResponse = await fetch(`/api/vault?folderId=${encodeURIComponent(upload.folderId)}`, { signal: activeUpload.controller.signal })
+            const vaultData = await vaultResponse.json().catch(() => null)
+            if (!vaultResponse.ok) throw new Error(vaultData?.error ?? 'Unable to verify upload destination.')
+            isVaultDestination = vaultData.isVaultDestination === true
+        }
+        if (isVaultDestination && !vault) throw new Error('Unlock the Vault before uploading files to it.')
+        const encrypted = isVaultDestination
+        const chunkedEncryption = encrypted && upload.fileSize > 10_000_000
+        let payload = chunkedEncryption ? upload.file : encryptedPayloads.current.get(upload.id)
+        if (!payload) {
+            payload = encrypted && vault ? await encryptVaultFile(upload.file, vault.key) : upload.file
+            if (encrypted) encryptedPayloads.current.set(upload.id, payload)
+        }
+        const encryptedPartCount = chunkedEncryption ? Math.ceil(upload.fileSize / MULTIPART_CHUNK_SIZE) : 0
+        const uploadSize = chunkedEncryption ? upload.fileSize + encryptedPartCount * 28 : payload.size
+        const uploadMimeType = encrypted ? 'application/octet-stream' : upload.file.type || 'application/octet-stream'
+        if (uploadSize > 10_000_000) {
+            await uploadMultipartFile(upload, activeUpload, payload, uploadSize, uploadMimeType, encrypted, chunkedEncryption)
+            return
+        }
+        const presignResponse = await fetch('/api/upload/presigned-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: upload.fileName,
+                size: uploadSize,
+                mimeType: uploadMimeType,
+                encrypted,
+                folderId: upload.folderId,
+            }),
+            signal: activeUpload.controller.signal,
+        })
+        const presignData = await presignResponse.json().catch(() => null)
+        if (!presignResponse.ok) {
+            throw new Error(presignData?.error ?? 'Unable to prepare upload.')
+        }
+
+        const xhr = new XMLHttpRequest()
+        activeUpload.xhr = xhr
+        updateUpload(upload.id, { status: 'UPLOADING', xhr })
+        const startedAt = performance.now()
+
+        await new Promise<void>((resolve, reject) => {
+            xhr.open('PUT', presignData.uploadUrl)
+            xhr.setRequestHeader('Content-Type', uploadMimeType)
+            xhr.upload.onprogress = (event) => {
+                const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.1)
+                updateUpload(upload.id, {
+                    progress: event.lengthComputable
+                        ? Math.min(100, Math.round((event.loaded / event.total) * 100))
+                        : 0,
+                    speed: event.loaded / elapsedSeconds,
+                })
+            }
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) resolve()
+                else reject(new Error(`Storage rejected this upload (HTTP ${xhr.status}).`))
+            }
+            xhr.onerror = () => reject(new Error('Network error while uploading to storage.'))
+            xhr.ontimeout = () => reject(new Error('Upload timed out while sending this file.'))
+            xhr.onabort = () => reject(new DOMException('Upload canceled.', 'AbortError'))
+            xhr.timeout = 120_000
+            xhr.send(payload)
+        })
+
+        updateUpload(upload.id, { status: 'PREPARING', progress: 100, speed: 0, xhr: undefined })
+        const completeResponse = await fetch('/api/upload/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fileId: presignData.fileId,
+                versionId: presignData.versionId,
+                name: upload.fileName,
+                size: uploadSize,
+                mimeType: uploadMimeType,
+                encrypted,
+                originalMimeType: encrypted ? upload.file.type || 'application/octet-stream' : null,
+                originalSize: encrypted ? upload.fileSize : null,
+                encryptionChunkSize: null,
+                folderId: upload.folderId,
+            }),
+            signal: activeUpload.controller.signal,
+        })
+        const completeData = await completeResponse.json().catch(() => null)
+        if (!completeResponse.ok) {
+            throw new Error(completeData?.error ?? 'Unable to save uploaded file.')
+        }
+
+        window.dispatchEvent(new CustomEvent('drivea:file-uploaded', { detail: completeData.file }))
+        encryptedPayloads.current.delete(upload.id)
+        updateUpload(upload.id, { status: 'COMPLETED', progress: 100, speed: 0 })
+    }
+
+    function isRetryableUploadError(error: unknown) {
+        if (error instanceof TypeError) return true
+        if (!(error instanceof Error)) return false
+        return /network|timeout|timed out|connection|fetch failed/i.test(error.message)
+    }
+
+    function waitForRetry(delay: number, signal: AbortSignal) {
+        return new Promise<void>((resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+                signal.removeEventListener('abort', onAbort)
+                resolve()
+            }, delay)
+            function onAbort() {
+                window.clearTimeout(timeout)
+                reject(new DOMException('Upload canceled.', 'AbortError'))
+            }
+            if (signal.aborted) onAbort()
+            else signal.addEventListener('abort', onAbort, { once: true })
+        })
+    }
+
     async function uploadFile(upload: UploadItem) {
         const activeUpload: ActiveUpload = { controller: new AbortController() }
         activeUploads.current.set(upload.id, activeUpload)
+        let retryCount = 0
 
         try {
-            let isVaultDestination = false
-            if (upload.folderId) {
-                const vaultResponse = await fetch(`/api/vault?folderId=${encodeURIComponent(upload.folderId)}`, { signal: activeUpload.controller.signal })
-                const vaultData = await vaultResponse.json().catch(() => null)
-                if (!vaultResponse.ok) throw new Error(vaultData?.error ?? 'Unable to verify upload destination.')
-                isVaultDestination = vaultData.isVaultDestination === true
-            }
-            if (isVaultDestination && !vault) throw new Error('Unlock the Vault before uploading files to it.')
-            const encrypted = isVaultDestination
-            const chunkedEncryption = encrypted && upload.fileSize > 10_000_000
-            let payload = chunkedEncryption ? upload.file : encryptedPayloads.current.get(upload.id)
-            if (!payload) {
-                payload = encrypted && vault ? await encryptVaultFile(upload.file, vault.key) : upload.file
-                if (encrypted) encryptedPayloads.current.set(upload.id, payload)
-            }
-            const encryptedPartCount = chunkedEncryption ? Math.ceil(upload.fileSize / MULTIPART_CHUNK_SIZE) : 0
-            const uploadSize = chunkedEncryption ? upload.fileSize + encryptedPartCount * 28 : payload.size
-            const uploadMimeType = encrypted ? 'application/octet-stream' : upload.file.type || 'application/octet-stream'
-            if (uploadSize > 10_000_000) {
-                await uploadMultipartFile(upload, activeUpload, payload, uploadSize, uploadMimeType, encrypted, chunkedEncryption)
-                return
-            }
-            const presignResponse = await fetch('/api/upload/presigned-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: upload.fileName,
-                    size: uploadSize,
-                    mimeType: uploadMimeType,
-                    encrypted,
-                    folderId: upload.folderId,
-                }),
-                signal: activeUpload.controller.signal,
-            })
-            const presignData = await presignResponse.json().catch(() => null)
-            if (!presignResponse.ok) {
-                throw new Error(presignData?.error ?? 'Unable to prepare upload.')
-            }
+            while (true) {
+                try {
+                    await uploadFileAttempt(upload, activeUpload)
+                    return
+                } catch (error) {
+                    if (error instanceof DOMException && error.name === 'AbortError') {
+                        updateUpload(upload.id, {
+                            status: activeUpload.paused ? 'PAUSED' : 'CANCELLED',
+                            speed: 0,
+                            xhr: undefined,
+                        })
+                        return
+                    }
 
-            const xhr = new XMLHttpRequest()
-            activeUpload.xhr = xhr
-            updateUpload(upload.id, { status: 'UPLOADING', xhr })
-            const startedAt = performance.now()
+                    if (retryCount < 2 && isRetryableUploadError(error)) {
+                        retryCount += 1
+                        updateUpload(upload.id, { status: 'PREPARING', speed: 0, xhr: undefined, error: undefined })
+                        try {
+                            await waitForRetry(1000 * 2 ** (retryCount - 1), activeUpload.controller.signal)
+                        } catch {
+                            updateUpload(upload.id, {
+                                status: activeUpload.paused ? 'PAUSED' : 'CANCELLED',
+                                speed: 0,
+                                xhr: undefined,
+                            })
+                            return
+                        }
+                        continue
+                    }
 
-            await new Promise<void>((resolve, reject) => {
-                xhr.open('PUT', presignData.uploadUrl)
-                xhr.setRequestHeader('Content-Type', uploadMimeType)
-                xhr.upload.onprogress = (event) => {
-                    const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.1)
                     updateUpload(upload.id, {
-                        progress: event.lengthComputable
-                            ? Math.min(100, Math.round((event.loaded / event.total) * 100))
-                            : 0,
-                        speed: event.loaded / elapsedSeconds,
+                        status: 'ERROR',
+                        speed: 0,
+                        xhr: undefined,
+                        error: error instanceof Error ? error.message : 'Upload failed.',
                     })
+                    return
                 }
-                xhr.onload = () => {
-                    if (xhr.status >= 200 && xhr.status < 300) resolve()
-                    else reject(new Error('Storage rejected this upload.'))
-                }
-                xhr.onerror = () => reject(new Error('Network error while uploading to storage.'))
-                xhr.onabort = () => reject(new DOMException('Upload canceled.', 'AbortError'))
-                xhr.send(payload)
-            })
-
-            updateUpload(upload.id, { status: 'PREPARING', progress: 100, speed: 0, xhr: undefined })
-            const completeResponse = await fetch('/api/upload/complete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fileId: presignData.fileId,
-                    versionId: presignData.versionId,
-                    name: upload.fileName,
-                    size: uploadSize,
-                    mimeType: uploadMimeType,
-                    encrypted,
-                    originalMimeType: encrypted ? upload.file.type || 'application/octet-stream' : null,
-                    originalSize: encrypted ? upload.fileSize : null,
-                    encryptionChunkSize: null,
-                    folderId: upload.folderId,
-                }),
-                signal: activeUpload.controller.signal,
-            })
-            const completeData = await completeResponse.json().catch(() => null)
-            if (!completeResponse.ok) {
-                throw new Error(completeData?.error ?? 'Unable to save uploaded file.')
-            }
-
-            window.dispatchEvent(new CustomEvent('drivea:file-uploaded', { detail: completeData.file }))
-            encryptedPayloads.current.delete(upload.id)
-            updateUpload(upload.id, { status: 'COMPLETED', progress: 100, speed: 0 })
-        } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                updateUpload(upload.id, {
-                    status: activeUpload.paused ? 'PAUSED' : 'CANCELLED',
-                    speed: 0,
-                    xhr: undefined,
-                })
-            } else {
-                updateUpload(upload.id, {
-                    status: 'ERROR',
-                    speed: 0,
-                    xhr: undefined,
-                    error: error instanceof Error ? error.message : 'Upload failed.',
-                })
             }
         } finally {
             activeUploads.current.delete(upload.id)
@@ -230,26 +284,15 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
             const start = (partNumber - 1) * chunkSize
             const rawChunk = payload.slice(start, Math.min(start + chunkSize, sourceSize))
             const blob = chunkedEncryption && vault ? await encryptVaultChunk(rawChunk, vault.key) : rawChunk
-            let etag = ''
-            let attempt = 0
-            while (!etag) {
-                try {
-                    etag = await uploadPart(partUrl, blob, activeUpload, (loaded) => {
-                        const transferred = [...multipart.completedParts.keys()].reduce((total, number) => {
-                            return total + Math.min(chunkSize, sourceSize - (number - 1) * chunkSize) + (chunkedEncryption ? 28 : 0)
-                        }, 0) + loaded
-                        updateUpload(upload.id, {
-                            progress: Math.min(99, Math.round((transferred / uploadSize) * 100)),
-                            speed: transferred / Math.max((performance.now() - startedAt) / 1000, 0.1),
-                        })
-                    })
-                } catch (error) {
-                    if (activeUpload.controller.signal.aborted) throw error
-                    attempt += 1
-                    if (attempt > 5) throw error
-                    await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** (attempt - 1), 16000)))
-                }
-            }
+            const etag = await uploadPart(partUrl, blob, activeUpload, (loaded) => {
+                const transferred = [...multipart.completedParts.keys()].reduce((total, number) => {
+                    return total + Math.min(chunkSize, sourceSize - (number - 1) * chunkSize) + (chunkedEncryption ? 28 : 0)
+                }, 0) + loaded
+                updateUpload(upload.id, {
+                    progress: Math.min(99, Math.round((transferred / uploadSize) * 100)),
+                    speed: transferred / Math.max((performance.now() - startedAt) / 1000, 0.1),
+                })
+            })
             multipart.completedParts.set(partNumber, etag)
         }
 
@@ -304,12 +347,26 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
                 if (xhr.status >= 200 && xhr.status < 300 && etag) resolve(etag)
                 else reject(new Error(xhr.status >= 200 && xhr.status < 300
                     ? 'Storage did not expose the uploaded part ETag. Configure CORS to expose ETag.'
-                    : 'Storage rejected this upload part.'))
+                    : `Storage rejected this upload part (HTTP ${xhr.status}).`))
             }
             xhr.onerror = () => reject(new Error('Network error while uploading to storage.'))
+            xhr.ontimeout = () => reject(new Error('Upload timed out while sending this file part.'))
             xhr.onabort = () => reject(new DOMException('Upload paused.', 'AbortError'))
+            xhr.timeout = 120_000
             xhr.send(blob)
         })
+    }
+
+    function processUploadQueue() {
+        while (activeUploadCount.current < maxConcurrentUploads && uploadQueue.current.length > 0) {
+            const upload = uploadQueue.current.shift()!
+            activeUploadCount.current += 1
+            updateUpload(upload.id, { status: 'PREPARING', error: undefined })
+            void uploadFile(upload).finally(() => {
+                activeUploadCount.current -= 1
+                processUploadQueue()
+            })
+        }
     }
 
     function uploadFiles(files: File[], folderId?: string) {
@@ -320,12 +377,13 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
             fileSize: file.size,
             progress: 0,
             speed: 0,
-            status: 'PREPARING',
+            status: 'QUEUED',
             folderId,
         }))
 
         setUploads((current) => [...newUploads, ...current])
-        newUploads.forEach((upload) => void uploadFile(upload))
+        uploadQueue.current.push(...newUploads)
+        processUploadQueue()
     }
 
     function reportUploadError(file: File, error: string) {
@@ -342,6 +400,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     }
 
     function cancelUpload(id: string) {
+        uploadQueue.current = uploadQueue.current.filter((upload) => upload.id !== id)
         const activeUpload = activeUploads.current.get(id)
         if (activeUpload) {
             activeUpload.controller.abort()
@@ -371,8 +430,9 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     function resumeUpload(id: string) {
         const upload = uploads.find((item) => item.id === id)
         if (!upload || (upload.status !== 'PAUSED' && upload.status !== 'ERROR')) return
-        updateUpload(id, { status: 'PREPARING', error: undefined })
-        void uploadFile(upload)
+        updateUpload(id, { status: 'QUEUED', error: undefined })
+        uploadQueue.current.push(upload)
+        processUploadQueue()
     }
 
     function minimizeWidget() {

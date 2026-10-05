@@ -97,7 +97,7 @@ export function Sidebar() {
             <button
               onClick={() => {
                 setIsNewOpen(false)
-                const btn = document.getElementById('trigger-upload-files')
+                const btn = document.getElementById('trigger-upload-folder')
                 if (btn) btn.click()
               }}
               className="mt-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors cursor-pointer"

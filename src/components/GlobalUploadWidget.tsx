@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronDown, ChevronUp, CircleAlert, LoaderCircle, Pause, Play, UploadCloud, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, CircleAlert, Clock3, LoaderCircle, Pause, Play, UploadCloud, X } from 'lucide-react'
 import { formatBytes } from '@/lib/quota'
 import { useUpload } from '@/context/UploadContext'
 
@@ -11,6 +11,7 @@ export function GlobalUploadWidget() {
     if (uploads.length === 0) return null
 
     const activeCount = uploads.filter((upload) => activeStatuses.has(upload.status)).length
+    const queuedCount = uploads.filter((upload) => upload.status === 'QUEUED').length
     const completedCount = uploads.filter((upload) => upload.status === 'COMPLETED').length
     const allCompleted = activeCount === 0 && completedCount === uploads.length
     const totalSize = uploads.reduce((total, upload) => total + upload.fileSize, 0)
@@ -41,7 +42,7 @@ export function GlobalUploadWidget() {
                         {activeCount ? `Uploading ${activeCount} item${activeCount === 1 ? '' : 's'}` : 'Upload activity'}
                     </span>
                     <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
-                        {activeCount ? `${formatBytes(totalSpeed)}/s` : `${completedCount} completed`}
+                        {activeCount ? `${formatBytes(totalSpeed)}/s${queuedCount ? ` · ${queuedCount} queued` : ''}` : `${queuedCount} queued · ${completedCount} completed`}
                     </span>
                 </span>
                 <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" />
@@ -63,7 +64,7 @@ export function GlobalUploadWidget() {
                                 : allCompleted ? 'All uploads completed' : 'Upload activity'}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {completedCount} completed{activeCount ? ` · ${activeCount} active · ${formatBytes(totalSpeed)}/s` : ''}
+                            {completedCount} completed{activeCount ? ` · ${activeCount} active · ${formatBytes(totalSpeed)}/s` : ''}{queuedCount ? ` · ${queuedCount} queued` : ''}
                         </p>
                     </div>
                 </div>
@@ -81,7 +82,9 @@ export function GlobalUploadWidget() {
             <ul className="max-h-80 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
                 {uploads.map((upload) => {
                     const isActive = activeStatuses.has(upload.status)
-                    const label = upload.status === 'UPLOADING'
+                    const label = upload.status === 'QUEUED'
+                        ? 'Queued'
+                        : upload.status === 'UPLOADING'
                         ? `${upload.progress}% · ${formatBytes(upload.speed)}/s`
                         : upload.status === 'PREPARING'
                             ? upload.progress === 100 ? 'Saving file details...' : 'Preparing upload...'
@@ -97,6 +100,8 @@ export function GlobalUploadWidget() {
                                 <span className="mt-0.5 shrink-0">
                                     {upload.status === 'COMPLETED'
                                         ? <Check className="h-4 w-4 text-emerald-500" />
+                                        : upload.status === 'QUEUED'
+                                            ? <Clock3 className="h-4 w-4 text-slate-400" />
                                         : isActive
                                             ? <LoaderCircle className="h-4 w-4 animate-spin text-[#f15a24]" />
                                             : upload.status === 'ERROR'
@@ -130,7 +135,7 @@ export function GlobalUploadWidget() {
                                                 <Play className="h-4 w-4" />
                                             </button>
                                         )}
-                                        {(isActive || upload.status === 'PAUSED' || upload.status === 'ERROR') && (
+                                        {(isActive || upload.status === 'QUEUED' || upload.status === 'PAUSED' || upload.status === 'ERROR') && (
                                             <button
                                                 type="button"
                                                 onClick={() => cancelUpload(upload.id)}
