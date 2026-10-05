@@ -8,6 +8,7 @@ import { FilePreviewModal } from '@/components/files/FilePreviewModal'
 import { ShareModal } from '@/components/files/ShareModal'
 import { VersionHistoryModal } from '@/components/files/VersionHistoryModal'
 import { StorageMeter } from '@/components/StorageMeter'
+import { StorageInsights, type CleanupSuggestion, type StorageBreakdownItem } from '@/components/StorageInsights'
 import { formatBytes } from '@/lib/quota'
 
 export type DashboardSection = 'recent' | 'starred' | 'trash' | 'storage'
@@ -27,6 +28,13 @@ type StorageSummary = {
     fileCount: number
     isPro: boolean
     hasBillingCustomer: boolean
+    breakdown: StorageBreakdownItem[]
+    suggestions: {
+        largeFiles: CleanupSuggestion[]
+        duplicates: CleanupSuggestion[]
+        oldFiles: CleanupSuggestion[]
+        duplicateScanTruncated: boolean
+    }
 }
 
 const sectionDetails: Record<DashboardSection, { title: string; description: string }> = {
@@ -87,11 +95,18 @@ export function DashboardSectionView({ section }: { section: DashboardSection })
 
             try {
                 if (section === 'storage') {
-                    const response = await fetch('/api/storage', { signal: controller.signal })
-                    const data = await response.json().catch(() => null)
-                    if (!response.ok) throw new Error(data?.error ?? 'Unable to load storage usage.')
-                    if (!data) throw new Error('The server returned an invalid storage response.')
-                    setStorage(data)
+                    const [summaryResponse, insightsResponse] = await Promise.all([
+                        fetch('/api/storage', { signal: controller.signal }),
+                        fetch('/api/storage/insights', { signal: controller.signal }),
+                    ])
+                    const [summary, insights] = await Promise.all([
+                        summaryResponse.json().catch(() => null),
+                        insightsResponse.json().catch(() => null),
+                    ])
+                    if (!summaryResponse.ok) throw new Error(summary?.error ?? 'Unable to load storage usage.')
+                    if (!insightsResponse.ok) throw new Error(insights?.error ?? 'Unable to load storage insights.')
+                    if (!summary || !insights) throw new Error('The server returned an invalid storage response.')
+                    setStorage({ ...summary, ...insights })
                     return
                 }
 
@@ -264,12 +279,17 @@ export function DashboardSectionView({ section }: { section: DashboardSection })
                 isLoading ? (
                     <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 p-8 text-sm text-slate-500 dark:text-slate-400">Loading storage usage...</div>
                 ) : storage ? (
-                    <div className="max-w-xl space-y-6">
+                    <div className="max-w-3xl space-y-6">
                         <StorageMeter
                             storageUsed={storage.storageUsed}
                             storageLimit={storage.storageLimit}
                             isPro={storage.isPro}
                             hasBillingCustomer={storage.hasBillingCustomer}
+                        />
+                        <StorageInsights
+                            breakdown={storage.breakdown ?? []}
+                            suggestions={storage.suggestions ?? { largeFiles: [], duplicates: [], oldFiles: [], duplicateScanTruncated: false }}
+                            onTrash={(fileId) => void updateFile(fileId, { action: 'trash' })}
                         />
                         <dl className="grid grid-cols-2 gap-4">
                             <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#131922] p-5 shadow-2xs">

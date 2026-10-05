@@ -63,6 +63,7 @@ export const uploadCompletionSchema = z.object({
     originalMimeType: z.string().min(1).max(255).nullable().optional(),
     originalSize: z.number().int().safe().nonnegative().max(MULTIPART_MAX_BYTES).nullable().optional(),
     encryptionChunkSize: z.number().int().positive().nullable().optional(),
+    fileHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(),
 })
 
 type JsonBodyResult<T> = { data: T; response?: never } | { data?: never; response: Response }

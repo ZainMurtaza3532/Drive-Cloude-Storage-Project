@@ -50,6 +50,19 @@ type UploadContextValue = {
 }
 
 const UploadContext = createContext<UploadContextValue | null>(null)
+const fileHashes = new WeakMap<File, Promise<string>>()
+
+function getFileHash(file: File) {
+    let hash = fileHashes.get(file)
+    if (!hash) {
+        hash = file.arrayBuffer().then(async (contents) => {
+            const digest = await crypto.subtle.digest('SHA-256', contents)
+            return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+        })
+        fileHashes.set(file, hash)
+    }
+    return hash
+}
 
 export function UploadProvider({ children }: { children: React.ReactNode }) {
     const [uploads, setUploads] = useState<UploadItem[]>([])
@@ -87,8 +100,16 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         const encryptedPartCount = chunkedEncryption ? Math.ceil(upload.fileSize / MULTIPART_CHUNK_SIZE) : 0
         const uploadSize = chunkedEncryption ? upload.fileSize + encryptedPartCount * 28 : payload.size
         const uploadMimeType = encrypted ? 'application/octet-stream' : upload.file.type || 'application/octet-stream'
+        let fileHash: string | null = null
+        if (!encrypted && upload.fileSize <= 10_000_000) {
+            try {
+                fileHash = await getFileHash(upload.file)
+            } catch (error) {
+                console.warn('Unable to calculate file checksum; upload will continue without duplicate detection metadata.', error)
+            }
+        }
         if (uploadSize > 10_000_000) {
-            await uploadMultipartFile(upload, activeUpload, payload, uploadSize, uploadMimeType, encrypted, chunkedEncryption)
+            await uploadMultipartFile(upload, activeUpload, payload, uploadSize, uploadMimeType, encrypted, chunkedEncryption, fileHash)
             return
         }
         const presignResponse = await fetch('/api/upload/presigned-url', {
@@ -151,6 +172,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
                 originalSize: encrypted ? upload.fileSize : null,
                 encryptionChunkSize: null,
                 folderId: upload.folderId,
+                fileHash,
             }),
             signal: activeUpload.controller.signal,
         })
@@ -235,7 +257,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         }
     }
 
-    async function uploadMultipartFile(upload: UploadItem, activeUpload: ActiveUpload, payload: Blob, uploadSize: number, mimeType: string, encrypted: boolean, chunkedEncryption: boolean) {
+    async function uploadMultipartFile(upload: UploadItem, activeUpload: ActiveUpload, payload: Blob, uploadSize: number, mimeType: string, encrypted: boolean, chunkedEncryption: boolean, fileHash: string | null) {
         const chunkSize = MULTIPART_CHUNK_SIZE
         let multipart = multipartSessions.current.get(upload.id)
         if (!multipart) {
@@ -320,6 +342,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
                 originalSize: encrypted ? upload.fileSize : null,
                 encryptionChunkSize: chunkedEncryption ? chunkSize : null,
                 folderId: upload.folderId,
+                fileHash,
             }),
             signal: activeUpload.controller.signal,
         })

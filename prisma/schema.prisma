@@ -92,6 +92,9 @@ model Folder {
   shareLinks ShareLink[]
   access     FolderAccess[]
   uploadSessions UploadSession[]
+
+  @@index([userId, isTrash])
+  @@index([userId, trashedAt])
 }
 
 model UploadSession {
@@ -142,10 +145,15 @@ model File {
   isStarred  Boolean     @default(false)
   isTrash    Boolean     @default(false)
   trashedAt  DateTime?
+  fileHash   String?
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   shareLinks ShareLink[]
   comments   Comment[]
+
+  @@index([userId, isTrash])
+  @@index([userId, trashedAt])
+  @@index([userId, fileHash])
 }
 
 model Comment {

@@ -12,6 +12,7 @@ Drive Storage is a web app built with Next.js App Router, Prisma, and PostgreSQL
 - Public share links with expiry, bcrypt password protection, and enforced download limits
 - Folder sharing with viewer/editor roles, public share links, comments, and version history
 - Browser-side encrypted Vault
+- Automated 30-day Trash retention, storage breakdown, and file cleanup suggestions
 - Optional Stripe billing for the 100 GB Pro plan
 - Upstash-backed distributed rate limiting when configured
 
@@ -45,6 +46,7 @@ Drive Storage is a web app built with Next.js App Router, Prisma, and PostgreSQL
    - `DATABASE_URL`
    - `NEXTAUTH_URL` (use `http://localhost:3000` locally)
    - `NEXTAUTH_SECRET` (generate a unique secret, for example `openssl rand -base64 32`)
+   - `CRON_SECRET` (a separate random secret for authenticating scheduled cleanup requests)
    - `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_BUCKET_NAME`
    - `S3_ENDPOINT` when using a non-AWS S3-compatible provider
    - `SITE_URL` (use `http://localhost:3000` locally)
@@ -68,6 +70,7 @@ Drive Storage is a web app built with Next.js App Router, Prisma, and PostgreSQL
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection used by Prisma |
 | `NEXTAUTH_URL`, `NEXTAUTH_SECRET` | Authentication callback URL and signing secret |
+| `CRON_SECRET` | Bearer secret used to authenticate scheduled Trash cleanup |
 | `TWO_FACTOR_ENCRYPTION_KEY` | Encrypts stored two-factor secrets |
 | `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME` | Private object storage configuration |
 | `S3_ENDPOINT` | S3-compatible provider endpoint; omit for AWS S3 defaults |
@@ -94,6 +97,8 @@ Commit the generated `prisma/migrations` directory. Apply reviewed migrations to
 
 The migrations `20261005102000_add_share_link_controls` and `20261005104500_ensure_share_link_advanced_columns` add any missing advanced share-control columns to an existing `ShareLink` table. Apply them to the deployed database with `npx prisma migrate deploy` to enable expiry, password protection, and download limits. Their `ADD COLUMN IF NOT EXISTS` statements allow deployment when columns were already added manually. Until then, the app supports basic public links and preserves any existing password field it can read; it will not silently drop newly requested advanced protections.
 
+The migration `20261005110000_storage_cleanup_and_file_hash` adds optional file-checksum metadata and indexes the Trash-retention queries; it also backfills missing trash timestamps from each item’s last update. Apply it with `npx prisma migrate deploy`. Vercel runs `/api/cron/trash-cleanup` daily at 03:00 UTC. Configure `CRON_SECRET` in the deployment environment; only requests with its bearer token can permanently delete S3 objects and database records after 30 days in Trash. The Storage dashboard reports usage by file type and offers large-file, duplicate-candidate, and old-file suggestions. Duplicate candidates use checksums when available, otherwise matching name, size, and MIME type; review them before moving to Trash.
+
 ## Uploads and Redis
 
 File contents are sent from the browser directly to private S3-compatible storage; Next.js routes handle authorization, metadata, and short-lived presigned URLs rather than proxying file bytes. Larger files use multipart upload routes. Upload completion checks ownership/access and storage quota. Users can select or drop folders to upload their files with nested directory structure preserved. Uploads are queued with at most three files active at once and retry transient network failures twice.
@@ -112,7 +117,7 @@ Set the CLI-provided signing secret as `STRIPE_WEBHOOK_SECRET`. Configure the de
 
 ## Vercel Deployment
 
-1. Configure the Production environment with production-only `DATABASE_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `TWO_FACTOR_ENCRYPTION_KEY`, S3 values, and `SITE_URL`.
+1. Configure the Production environment with production-only `DATABASE_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `CRON_SECRET`, `TWO_FACTOR_ENCRYPTION_KEY`, S3 values, and `SITE_URL`.
 2. Set `SITE_URL` to the canonical HTTPS origin, for example `https://drive-cloude-storage.vercel.app`. Set `NEXTAUTH_URL` to the app's deployed origin.
 3. Add Upstash REST credentials if distributed rate limiting is desired. Add `REDIS_URL` only when deploying BullMQ producers/workers.
 4. Configure OAuth and Stripe variables only for the providers/features enabled in production. Register the deployed Stripe webhook URL and use live Stripe credentials only after checking the Price and webhook configuration.

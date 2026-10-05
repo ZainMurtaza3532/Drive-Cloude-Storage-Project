@@ -27,7 +27,7 @@ export async function POST(request: Request) {
         if (limited) return limited
         const parsed = await parseJsonBody(request, uploadCompletionSchema)
         if (parsed.response) return parsed.response
-        const { fileId, versionId, name, size, encrypted, originalSize, encryptionChunkSize } = parsed.data
+        const { fileId, versionId, name, size, encrypted, originalSize, encryptionChunkSize, fileHash } = parsed.data
         const folderId = parsed.data.folderId ?? null
         const mimeType = parsed.data.mimeType || 'application/octet-stream'
         const originalMimeType = parsed.data.originalMimeType ?? null
@@ -128,13 +128,14 @@ export async function POST(request: Request) {
             const parentFile = existingFile
                 ? await transaction.file.update({
                     where: { id: existingFile.id },
-                    data: { updatedAt: new Date() },
+                    data: { updatedAt: new Date(), fileHash: fileHash ?? null },
                     select: { id: true },
                 })
                 : await transaction.file.create({
                     data: {
                         id: fileId,
                         name,
+                        fileHash: fileHash ?? null,
                         ...(folderId ? { folder: { connect: { id: folderId } } } : {}),
                         user: { connect: { id: session.user.id } },
                     },
