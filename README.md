@@ -92,6 +92,8 @@ npx prisma migrate dev --name init
 
 Commit the generated `prisma/migrations` directory. Apply reviewed migrations to production with `npx prisma migrate deploy` from deployment tooling, using a production database URL kept in the deployment environment. Back up existing production data before schema changes. Never run `prisma migrate reset` or `prisma db push --force-reset` against production.
 
+The migration `20261005102000_add_share_link_controls` adds the public-share download limit and view-count columns to an existing `ShareLink` table. Apply it to the deployed database with `npx prisma migrate deploy` before using those share settings. Its `ADD COLUMN IF NOT EXISTS` statements also allow deployment when those columns were already added manually.
+
 ## Uploads and Redis
 
 File contents are sent from the browser directly to private S3-compatible storage; Next.js routes handle authorization, metadata, and short-lived presigned URLs rather than proxying file bytes. Larger files use multipart upload routes. Upload completion checks ownership/access and storage quota. Users can select or drop folders to upload their files with nested directory structure preserved. Uploads are queued with at most three files active at once and retry transient network failures twice.
