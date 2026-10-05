@@ -18,6 +18,7 @@ type StorageSuggestions = {
   duplicates: CleanupSuggestion[]
   oldFiles: CleanupSuggestion[]
   duplicateScanTruncated: boolean
+  checksumColumnAvailable?: boolean
 }
 
 const categoryStyles: Record<string, { color: string; icon: typeof Image }> = {
@@ -100,6 +101,9 @@ export function StorageInsights({
         </div>
         {suggestions.duplicateScanTruncated && (
           <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">Duplicate candidates are based on the most recently updated 2,000 files. Upload checksums are not available for every existing file.</p>
+        )}
+        {suggestions.checksumColumnAvailable === false && (
+          <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">The file checksum migration has not been applied. Duplicate candidates use matching file name, size, and type until it is applied.</p>
         )}
         {!hasSuggestions ? (
           <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-800/50 dark:text-slate-400">No cleanup suggestions right now.</p>

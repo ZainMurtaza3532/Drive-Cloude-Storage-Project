@@ -34,6 +34,7 @@ type StorageSummary = {
         duplicates: CleanupSuggestion[]
         oldFiles: CleanupSuggestion[]
         duplicateScanTruncated: boolean
+        checksumColumnAvailable?: boolean
     }
 }
 
@@ -288,7 +289,7 @@ export function DashboardSectionView({ section }: { section: DashboardSection })
                         />
                         <StorageInsights
                             breakdown={storage.breakdown ?? []}
-                            suggestions={storage.suggestions ?? { largeFiles: [], duplicates: [], oldFiles: [], duplicateScanTruncated: false }}
+                            suggestions={storage.suggestions ?? { largeFiles: [], duplicates: [], oldFiles: [], duplicateScanTruncated: false, checksumColumnAvailable: true }}
                             onTrash={(fileId) => void updateFile(fileId, { action: 'trash' })}
                         />
                         <dl className="grid grid-cols-2 gap-4">

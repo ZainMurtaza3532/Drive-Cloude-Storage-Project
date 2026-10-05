@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import { Prisma } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 
@@ -20,15 +21,25 @@ function categoryForMimeType(mimeType: string) {
     return 'Other'
 }
 
-function findDuplicateCandidates(files: Array<{
+type AnalyzedFile = {
     id: string
     name: string
     fileHash: string | null
     updatedAt: Date
     versions: Array<{ size: bigint; mimeType: string }>
-}>) {
-    const groups = new Map<string, typeof files>()
-    for (const file of files) {
+}
+
+type StorageFileRow = Omit<AnalyzedFile, 'fileHash'> & { fileHash?: string | null }
+
+function isMissingFileHashColumn(error: unknown) {
+    return error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2022' &&
+        /fileHash/i.test(error.message)
+}
+
+function findDuplicateCandidates(files: AnalyzedFile[]) {
+    const groups = new Map<string, AnalyzedFile[]>()
+    for (const file of files.slice(0, DUPLICATE_SCAN_LIMIT)) {
         const version = file.versions[0]
         if (!version) continue
         const key = file.fileHash
@@ -63,59 +74,65 @@ export async function GET() {
 
     try {
         const userId = session.user.id
-        const [versionGroups, largeVersions, oldFiles, duplicateScan] = await Promise.all([
-            prisma.fileVersion.groupBy({
-                by: ['mimeType'],
-                where: { file: { is: { userId } } },
-                _sum: { size: true },
-            }),
-            prisma.fileVersion.findMany({
-                where: {
-                    isCurrent: true,
-                    size: { gte: BigInt(LARGE_FILE_BYTES) },
-                    file: { is: { userId, isTrash: false } },
-                },
-                select: {
-                    size: true,
-                    file: { select: { id: true, name: true, updatedAt: true } },
-                },
-                orderBy: { size: 'desc' },
-                take: 5,
-            }),
-            prisma.file.findMany({
-                where: {
-                    userId,
-                    isTrash: false,
-                    updatedAt: { lte: new Date(Date.now() - OLD_FILE_AGE_MS) },
-                    versions: { some: { isCurrent: true } },
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    updatedAt: true,
-                    versions: { where: { isCurrent: true }, select: { size: true }, take: 1 },
-                },
-                orderBy: { updatedAt: 'asc' },
-                take: 5,
-            }),
-            prisma.file.findMany({
-                where: { userId, isTrash: false, versions: { some: { isCurrent: true } } },
-                select: {
-                    id: true,
-                    name: true,
-                    fileHash: true,
-                    updatedAt: true,
-                    versions: { where: { isCurrent: true }, select: { size: true, mimeType: true }, take: 1 },
-                },
+        const where = { userId, isTrash: false, versions: { some: { isCurrent: true } } }
+        const baseSelect = {
+            id: true,
+            name: true,
+            updatedAt: true,
+            versions: {
+                where: { isCurrent: true },
+                select: { size: true, mimeType: true },
+                take: 1,
+            },
+        } as const
+        let files: AnalyzedFile[]
+        let checksumColumnAvailable = true
+        try {
+            const rows: StorageFileRow[] = await prisma.file.findMany({
+                where,
+                select: { ...baseSelect, fileHash: true },
                 orderBy: { updatedAt: 'desc' },
-                take: DUPLICATE_SCAN_LIMIT,
-            }),
-        ])
+            })
+            files = rows.map((file) => ({ ...file, fileHash: file.fileHash ?? null }))
+        } catch (error) {
+            if (!isMissingFileHashColumn(error)) throw error
+            console.warn('Storage analysis is falling back to metadata-based duplicate detection because File.fileHash is not available in the database.')
+            checksumColumnAvailable = false
+            files = await prisma.file.findMany({
+                where,
+                select: baseSelect,
+                orderBy: { updatedAt: 'desc' },
+            }).then((rows) => rows.map((file) => ({ ...file, fileHash: null })))
+        }
 
         const categoryBytes = new Map<string, number>()
-        for (const group of versionGroups) {
-            const category = categoryForMimeType(group.mimeType)
-            categoryBytes.set(category, (categoryBytes.get(category) ?? 0) + Number(group._sum.size ?? BigInt(0)))
+        const largeFiles: Array<{ id: string; name: string; size: number; reason: string }> = []
+        const oldFiles: Array<{ id: string; name: string; size: number; reason: string; updatedAt: string }> = []
+        const oldFileCutoff = Date.now() - OLD_FILE_AGE_MS
+
+        for (const file of files) {
+            const version = file.versions[0]
+            if (!version) continue
+            const size = Number(version.size)
+            if (!Number.isSafeInteger(size) || size < 0) {
+                throw new Error(`Invalid stored file size for file ${file.id}.`)
+            }
+
+            const category = categoryForMimeType(version.mimeType.toLowerCase())
+            categoryBytes.set(category, (categoryBytes.get(category) ?? 0) + size)
+
+            if (size >= LARGE_FILE_BYTES) {
+                largeFiles.push({ id: file.id, name: file.name, size, reason: 'Larger than 50 MB' })
+            }
+            if (file.updatedAt.getTime() <= oldFileCutoff) {
+                oldFiles.push({
+                    id: file.id,
+                    name: file.name,
+                    size,
+                    reason: 'Not modified in over a year',
+                    updatedAt: file.updatedAt.toISOString(),
+                })
+            }
         }
 
         return NextResponse.json({
@@ -124,21 +141,11 @@ export async function GET() {
                 bytes: categoryBytes.get(category) ?? 0,
             })),
             suggestions: {
-                largeFiles: largeVersions.map(({ size, file }) => ({
-                    id: file.id,
-                    name: file.name,
-                    size: Number(size),
-                    reason: 'Larger than 50 MB',
-                })),
-                duplicates: findDuplicateCandidates(duplicateScan),
-                oldFiles: oldFiles.map((file) => ({
-                    id: file.id,
-                    name: file.name,
-                    size: Number(file.versions[0]?.size ?? 0),
-                    reason: 'Not modified in over a year',
-                    updatedAt: file.updatedAt.toISOString(),
-                })),
-                duplicateScanTruncated: duplicateScan.length === DUPLICATE_SCAN_LIMIT,
+                largeFiles: largeFiles.sort((left, right) => right.size - left.size).slice(0, 5),
+                duplicates: findDuplicateCandidates(files),
+                oldFiles: oldFiles.sort((left, right) => left.updatedAt.localeCompare(right.updatedAt)).slice(0, 5),
+                duplicateScanTruncated: files.length > DUPLICATE_SCAN_LIMIT,
+                checksumColumnAvailable,
             },
         }, { headers: { 'Cache-Control': 'no-store, max-age=0' } })
     } catch (error) {
