@@ -179,6 +179,9 @@ export function FilePreviewModal({ file, files = [], onClose, onNavigate, onShar
     const fileUrl = `/api/files/${encodeURIComponent(file.id)}/download`
     const resolvedFileUrl = file.isEncrypted ? decryptedUrl ?? '' : fileUrl
     const downloadUrl = file.isEncrypted ? decryptedUrl ?? undefined : `${fileUrl}?download=1`
+    const pdfPreviewUrl = file.isEncrypted
+        ? resolvedFileUrl
+        : `/api/files/${encodeURIComponent(file.id)}/preview`
     const canRenderPreview = !file.isEncrypted || Boolean(decryptedUrl)
     const mentionMatch = draft.match(/(?:^|\s)@([\w.-]*)$/)
     const mentionCandidates = mentionMatch
@@ -400,8 +403,9 @@ export function FilePreviewModal({ file, files = [], onClose, onNavigate, onShar
                                     <button type="button" onClick={() => setPdfZoom((value) => Math.max(50, value - 10))} aria-label="Zoom out PDF" className="rounded border border-slate-200 bg-white px-2 py-1.5 hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700"><ZoomOut className="h-4 w-4" /></button>
                                     <span>{pdfZoom}%</span>
                                     <button type="button" onClick={() => setPdfZoom((value) => Math.min(200, value + 10))} aria-label="Zoom in PDF" className="rounded border border-slate-200 bg-white px-2 py-1.5 hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700"><ZoomIn className="h-4 w-4" /></button>
+                                    <a href={pdfPreviewUrl} target="_blank" rel="noreferrer" className="rounded border border-slate-200 bg-white px-2 py-1.5 hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700">Open in new tab</a>
                                 </div>
-                                <iframe src={`${resolvedFileUrl}#page=${pdfPage}&zoom=${pdfZoom}`} title={`Preview of ${file.name}`} onLoad={() => setMediaLoading(false)} className="h-full w-full rounded bg-white" />
+                                <iframe src={`${pdfPreviewUrl}#page=${pdfPage}&zoom=${pdfZoom}`} title={`Preview of ${file.name}`} onLoad={() => setMediaLoading(false)} className="h-full w-full rounded bg-white" />
                                 <button type="button" onClick={() => setIsPlacingPdfPin((current) => !current)} aria-pressed={isPlacingPdfPin} title="Place annotation pin" className="absolute right-2 top-2 z-30 inline-flex items-center gap-1.5 border border-slate-300 bg-white/95 px-2.5 py-1.5 text-xs font-semibold text-slate-800 shadow hover:bg-white">
                                     <MapPin className="h-3.5 w-3.5" /> {isPlacingPdfPin ? 'Click page to pin' : 'Add pin'}
                                 </button>
