@@ -50,15 +50,35 @@ type UploadContextValue = {
 }
 
 const UploadContext = createContext<UploadContextValue | null>(null)
-const fileHashes = new WeakMap<File, Promise<string>>()
+const fileHashes = new WeakMap<File, Promise<string | null>>()
 
-function getFileHash(file: File) {
+function generateUniqueId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        try {
+            return crypto.randomUUID()
+        } catch {
+            // fallback if unavailable or throws
+        }
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0
+        const v = c === 'x' ? r : (r & 0x3) | 0x8
+        return v.toString(16)
+    })
+}
+
+function getFileHash(file: File): Promise<string | null> {
     let hash = fileHashes.get(file)
     if (!hash) {
-        hash = file.arrayBuffer().then(async (contents) => {
-            const digest = await crypto.subtle.digest('SHA-256', contents)
-            return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
-        })
+        if (typeof crypto === 'undefined' || !crypto.subtle || typeof crypto.subtle.digest !== 'function') {
+            return Promise.resolve(null)
+        }
+        hash = file.arrayBuffer()
+            .then(async (contents) => {
+                const digest = await crypto.subtle.digest('SHA-256', contents)
+                return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+            })
+            .catch(() => null)
         fileHashes.set(file, hash)
     }
     return hash
@@ -82,9 +102,10 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     }
 
     async function uploadFileAttempt(upload: UploadItem, activeUpload: ActiveUpload) {
+        const cleanFolderId = upload.folderId && String(upload.folderId).trim() ? String(upload.folderId).trim() : undefined
         let isVaultDestination = false
-        if (upload.folderId) {
-            const vaultResponse = await fetch(`/api/vault?folderId=${encodeURIComponent(upload.folderId)}`, { signal: activeUpload.controller.signal })
+        if (cleanFolderId) {
+            const vaultResponse = await fetch(`/api/vault?folderId=${encodeURIComponent(cleanFolderId)}`, { signal: activeUpload.controller.signal })
             const vaultData = await vaultResponse.json().catch(() => null)
             if (!vaultResponse.ok) throw new Error(vaultData?.error ?? 'Unable to verify upload destination.')
             isVaultDestination = vaultData.isVaultDestination === true
@@ -109,7 +130,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
             }
         }
         if (uploadSize > 10_000_000) {
-            await uploadMultipartFile(upload, activeUpload, payload, uploadSize, uploadMimeType, encrypted, chunkedEncryption, fileHash)
+            await uploadMultipartFile(upload, activeUpload, payload, uploadSize, uploadMimeType, encrypted, chunkedEncryption, fileHash, cleanFolderId)
             return
         }
         const presignResponse = await fetch('/api/upload/presigned-url', {
@@ -120,25 +141,31 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
                 size: uploadSize,
                 mimeType: uploadMimeType,
                 encrypted,
-                folderId: upload.folderId,
+                folderId: cleanFolderId ?? null,
             }),
             signal: activeUpload.controller.signal,
         })
         const presignData = await presignResponse.json().catch(() => null)
         if (!presignResponse.ok) {
-            throw new Error(presignData?.error ?? 'Unable to prepare upload.')
+            const detailMsg = presignData?.details ? `: ${presignData.details}` : ''
+            throw new Error((presignData?.error ?? 'Unable to prepare upload.') + detailMsg)
         }
 
         const xhr = new XMLHttpRequest()
         activeUpload.xhr = xhr
         updateUpload(upload.id, { status: 'UPLOADING', xhr })
         const startedAt = performance.now()
+        let lastProgressUpdate = 0
 
         await new Promise<void>((resolve, reject) => {
             xhr.open('PUT', presignData.uploadUrl)
             xhr.setRequestHeader('Content-Type', uploadMimeType)
             xhr.upload.onprogress = (event) => {
-                const elapsedSeconds = Math.max((performance.now() - startedAt) / 1000, 0.1)
+                const now = performance.now()
+                const isFinished = event.lengthComputable && event.loaded >= event.total
+                if (!isFinished && now - lastProgressUpdate < 80) return
+                lastProgressUpdate = now
+                const elapsedSeconds = Math.max((now - startedAt) / 1000, 0.1)
                 updateUpload(upload.id, {
                     progress: event.lengthComputable
                         ? Math.min(100, Math.round((event.loaded / event.total) * 100))
@@ -171,14 +198,15 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
                 originalMimeType: encrypted ? upload.file.type || 'application/octet-stream' : null,
                 originalSize: encrypted ? upload.fileSize : null,
                 encryptionChunkSize: null,
-                folderId: upload.folderId,
+                folderId: cleanFolderId ?? null,
                 fileHash,
             }),
             signal: activeUpload.controller.signal,
         })
         const completeData = await completeResponse.json().catch(() => null)
         if (!completeResponse.ok) {
-            throw new Error(completeData?.error ?? 'Unable to save uploaded file.')
+            const detailMsg = completeData?.details ? `: ${completeData.details}` : ''
+            throw new Error((completeData?.error ?? 'Unable to save uploaded file.') + detailMsg)
         }
 
         window.dispatchEvent(new CustomEvent('drivea:file-uploaded', { detail: completeData.file }))
@@ -257,7 +285,17 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         }
     }
 
-    async function uploadMultipartFile(upload: UploadItem, activeUpload: ActiveUpload, payload: Blob, uploadSize: number, mimeType: string, encrypted: boolean, chunkedEncryption: boolean, fileHash: string | null) {
+    async function uploadMultipartFile(
+        upload: UploadItem,
+        activeUpload: ActiveUpload,
+        payload: Blob,
+        uploadSize: number,
+        mimeType: string,
+        encrypted: boolean,
+        chunkedEncryption: boolean,
+        fileHash: string | null,
+        cleanFolderId?: string
+    ) {
         const chunkSize = MULTIPART_CHUNK_SIZE
         let multipart = multipartSessions.current.get(upload.id)
         if (!multipart) {
@@ -269,7 +307,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
                     size: uploadSize,
                     mimeType,
                     encrypted,
-                    folderId: upload.folderId,
+                    folderId: cleanFolderId ?? null,
                 }),
                 signal: activeUpload.controller.signal,
             })
@@ -283,6 +321,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
         const sourceSize = chunkedEncryption ? upload.fileSize : uploadSize
         const partCount = Math.ceil(sourceSize / chunkSize)
         const startedAt = performance.now()
+        let lastPartProgress = 0
 
         for (let partNumber = 1; partNumber <= partCount; partNumber += 1) {
             if (activeUpload.controller.signal.aborted) throw new DOMException('Upload paused.', 'AbortError')
@@ -307,12 +346,15 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
             const rawChunk = payload.slice(start, Math.min(start + chunkSize, sourceSize))
             const blob = chunkedEncryption && vault ? await encryptVaultChunk(rawChunk, vault.key) : rawChunk
             const etag = await uploadPart(partUrl, blob, activeUpload, (loaded) => {
-                const transferred = [...multipart.completedParts.keys()].reduce((total, number) => {
+                const now = performance.now()
+                if (now - lastPartProgress < 80) return
+                lastPartProgress = now
+                const transferred = [...multipart!.completedParts.keys()].reduce((total, number) => {
                     return total + Math.min(chunkSize, sourceSize - (number - 1) * chunkSize) + (chunkedEncryption ? 28 : 0)
                 }, 0) + loaded
                 updateUpload(upload.id, {
                     progress: Math.min(99, Math.round((transferred / uploadSize) * 100)),
-                    speed: transferred / Math.max((performance.now() - startedAt) / 1000, 0.1),
+                    speed: transferred / Math.max((now - startedAt) / 1000, 0.1),
                 })
             })
             multipart.completedParts.set(partNumber, etag)
@@ -341,13 +383,16 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
                 originalMimeType: encrypted ? upload.file.type || 'application/octet-stream' : null,
                 originalSize: encrypted ? upload.fileSize : null,
                 encryptionChunkSize: chunkedEncryption ? chunkSize : null,
-                folderId: upload.folderId,
+                folderId: cleanFolderId ?? null,
                 fileHash,
             }),
             signal: activeUpload.controller.signal,
         })
         const savedData = await saveResponse.json().catch(() => null)
-        if (!saveResponse.ok) throw new Error(savedData?.error ?? 'Unable to save uploaded file.')
+        if (!saveResponse.ok) {
+            const detailMsg = savedData?.details ? `: ${savedData.details}` : ''
+            throw new Error((savedData?.error ?? 'Unable to save uploaded file.') + detailMsg)
+        }
         multipartSessions.current.delete(upload.id)
         encryptedPayloads.current.delete(upload.id)
         window.dispatchEvent(new CustomEvent('drivea:file-uploaded', { detail: savedData.file }))
@@ -382,26 +427,40 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
 
     function processUploadQueue() {
         while (activeUploadCount.current < maxConcurrentUploads && uploadQueue.current.length > 0) {
-            const upload = uploadQueue.current.shift()!
+            const upload = uploadQueue.current.shift()
+            if (!upload) break
             activeUploadCount.current += 1
             updateUpload(upload.id, { status: 'PREPARING', error: undefined })
-            void uploadFile(upload).finally(() => {
-                activeUploadCount.current -= 1
-                processUploadQueue()
-            })
+            void uploadFile(upload)
+                .catch((err: unknown) => {
+                    console.error(`Upload error for ${upload.fileName}:`, err)
+                    updateUpload(upload.id, {
+                        status: 'ERROR',
+                        speed: 0,
+                        error: err instanceof Error ? err.message : 'Upload failed.',
+                    })
+                })
+                .finally(() => {
+                    activeUploadCount.current = Math.max(0, activeUploadCount.current - 1)
+                    processUploadQueue()
+                })
         }
     }
 
     function uploadFiles(files: File[], folderId?: string) {
-        const newUploads = files.map((file): UploadItem => ({
-            id: crypto.randomUUID(),
+        const safeFolderId = folderId && String(folderId).trim() ? String(folderId).trim() : undefined
+        const fileList = Array.from(files || [])
+        if (!fileList.length) return
+
+        const newUploads = fileList.map((file): UploadItem => ({
+            id: generateUniqueId(),
             file,
             fileName: file.name,
             fileSize: file.size,
             progress: 0,
             speed: 0,
             status: 'QUEUED',
-            folderId,
+            folderId: safeFolderId,
         }))
 
         setUploads((current) => [...newUploads, ...current])
@@ -411,7 +470,7 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
 
     function reportUploadError(file: File, error: string) {
         setUploads((current) => [{
-            id: crypto.randomUUID(),
+            id: generateUniqueId(),
             file,
             fileName: file.name,
             fileSize: file.size,
@@ -451,11 +510,15 @@ export function UploadProvider({ children }: { children: React.ReactNode }) {
     }
 
     function resumeUpload(id: string) {
-        const upload = uploads.find((item) => item.id === id)
-        if (!upload || (upload.status !== 'PAUSED' && upload.status !== 'ERROR')) return
-        updateUpload(id, { status: 'QUEUED', error: undefined })
-        uploadQueue.current.push(upload)
-        processUploadQueue()
+        setUploads((current) => {
+            const upload = current.find((item) => item.id === id)
+            if (!upload || (upload.status !== 'PAUSED' && upload.status !== 'ERROR')) return current
+            setTimeout(() => {
+                uploadQueue.current.push({ ...upload, status: 'QUEUED', error: undefined })
+                processUploadQueue()
+            }, 0)
+            return current.map((item) => item.id === id ? { ...item, status: 'QUEUED', error: undefined } : item)
+        })
     }
 
     function minimizeWidget() {

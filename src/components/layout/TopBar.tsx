@@ -16,9 +16,11 @@ import Link from 'next/link'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
+import { useMobileNav } from '@/context/MobileNavContext'
 
 export function TopBar() {
   const router = useRouter()
+  const { isMobileMenuOpen, toggleMobileMenu } = useMobileNav()
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [searchValue, setSearchValue] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -108,13 +110,15 @@ export function TopBar() {
   return (
     <header className="flex h-18 items-center justify-between border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#0f141c]/80 px-4 lg:px-8 backdrop-blur-md sticky top-0 z-20">
       {/* Left: Mobile Menu & Search */}
-      <div className="flex flex-1 items-center gap-3">
+      <div className="flex flex-1 items-center gap-2 sm:gap-3 min-w-0">
         <button
           type="button"
-          className="rounded-xl p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 md:hidden dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800 transition cursor-pointer"
-          aria-label="Toggle Navigation"
+          onClick={toggleMobileMenu}
+          className="rounded-xl p-2 text-slate-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 md:hidden transition cursor-pointer shrink-0"
+          aria-label="Toggle menu"
+          aria-expanded={isMobileMenuOpen}
         >
-          <Menu className="h-5 w-5" />
+          {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
 
         <div className="relative w-full max-w-xl group" ref={searchRef}>

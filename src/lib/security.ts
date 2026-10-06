@@ -21,7 +21,7 @@ let warnedRateLimitUnavailable = false
 export const RATE_LIMITS = {
     auth: { limit: 10, windowSeconds: 60 },
     registration: { limit: 5, windowSeconds: 3_600 },
-    upload: { limit: 120, windowSeconds: 60 },
+    upload: { limit: 300, windowSeconds: 60 },
 } as const
 
 export const registrationSchema = z.object({
@@ -87,73 +87,76 @@ export async function parseJsonBody<T>(request: Request, schema: z.ZodType<T>): 
 }
 
 export async function enforceRateLimit(subject: string, policyName: keyof typeof RATE_LIMITS): Promise<Response | null> {
-    const policy = RATE_LIMITS[policyName]
-    const now = Date.now()
-    const keySecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || 'drivea-development-rate-limit-key'
-    const hashedSubject = createHmac('sha256', keySecret).update(subject).digest('hex')
-    const bucketKey = `drivea:rate-limit:${policyName}:${hashedSubject}`
+    try {
+        const policy = RATE_LIMITS[policyName]
+        const now = Date.now()
+        const keySecret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || 'drivea-development-rate-limit-key'
+        const hashedSubject = createHmac('sha256', keySecret).update(subject).digest('hex')
+        const bucketKey = `drivea:rate-limit:${policyName}:${hashedSubject}`
 
-    if (upstashUrl && upstashToken) {
-        try {
-            upstashRedis ??= new UpstashRedis({ url: upstashUrl, token: upstashToken })
-            let limiter = upstashLimiters.get(policyName)
-            if (!limiter) {
-                limiter = new Ratelimit({
-                    redis: upstashRedis,
-                    limiter: Ratelimit.slidingWindow(policy.limit, `${policy.windowSeconds} s`),
-                    prefix: `drivea:rate-limit:${policyName}`,
-                    analytics: false,
-                })
-                upstashLimiters.set(policyName, limiter)
-            }
+        if (upstashUrl && upstashToken) {
+            try {
+                upstashRedis ??= new UpstashRedis({ url: upstashUrl, token: upstashToken })
+                let limiter = upstashLimiters.get(policyName)
+                if (!limiter) {
+                    limiter = new Ratelimit({
+                        redis: upstashRedis,
+                        limiter: Ratelimit.slidingWindow(policy.limit, `${policy.windowSeconds} s`),
+                        prefix: `drivea:rate-limit:${policyName}`,
+                        analytics: false,
+                    })
+                    upstashLimiters.set(policyName, limiter)
+                }
 
-            const result = await limiter.limit(hashedSubject)
-            return result.success ? null : rateLimitedResponse(Math.max(1, Math.ceil((result.reset - now) / 1_000)), result.limit, result.remaining, result.reset)
-        } catch {
-            if (process.env.NODE_ENV === 'production') {
-                return Response.json({ error: 'Rate limiting is temporarily unavailable.' }, { status: 503 })
-            }
-        }
-    }
-
-    if (redisUrl) {
-        try {
-            redis ??= new Redis(redisUrl, {
-                lazyConnect: true,
-                maxRetriesPerRequest: 1,
-                enableOfflineQueue: false,
-                commandTimeout: 1_000,
-            }).on('error', () => undefined)
-            const count = Number(await redis.eval(
-                "local count = redis.call('INCR', KEYS[1]); if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; return count",
-                1,
-                bucketKey,
-                policy.windowSeconds,
-            ))
-            return count > policy.limit ? rateLimitedResponse(policy.windowSeconds) : null
-        } catch {
-            if (process.env.NODE_ENV === 'production') {
-                return Response.json({ error: 'Rate limiting is temporarily unavailable.' }, { status: 503 })
+                const result = await limiter.limit(hashedSubject)
+                return result.success ? null : rateLimitedResponse(Math.max(1, Math.ceil((result.reset - now) / 1_000)), result.limit, result.remaining, result.reset)
+            } catch (upstashErr) {
+                console.warn('Upstash Redis rate limiter failed or unavailable, bypassing limiter:', upstashErr)
+                return null
             }
         }
-    } else if (process.env.NODE_ENV === 'production') {
-        if (!warnedRateLimitUnavailable) {
-            console.warn('Distributed rate limiting is not configured. Skipping rate limit checks.')
-            warnedRateLimitUnavailable = true
+
+        if (redisUrl) {
+            try {
+                redis ??= new Redis(redisUrl, {
+                    lazyConnect: true,
+                    maxRetriesPerRequest: 1,
+                    enableOfflineQueue: false,
+                    commandTimeout: 1_000,
+                }).on('error', () => undefined)
+                const count = Number(await redis.eval(
+                    "local count = redis.call('INCR', KEYS[1]); if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; return count",
+                    1,
+                    bucketKey,
+                    policy.windowSeconds,
+                ))
+                return count > policy.limit ? rateLimitedResponse(policy.windowSeconds) : null
+            } catch (redisErr) {
+                console.warn('Redis rate limiter failed or unavailable, bypassing limiter:', redisErr)
+                return null
+            }
+        } else if (process.env.NODE_ENV === 'production') {
+            if (!warnedRateLimitUnavailable) {
+                console.warn('Distributed rate limiting is not configured. Skipping rate limit checks.')
+                warnedRateLimitUnavailable = true
+            }
+            return null
         }
+
+        const current = localBuckets.get(bucketKey)
+        if (!current || current.resetAt <= now) {
+            localBuckets.set(bucketKey, { count: 1, resetAt: now + policy.windowSeconds * 1_000 })
+            return null
+        }
+
+        current.count += 1
+        return current.count > policy.limit
+            ? rateLimitedResponse(Math.max(1, Math.ceil((current.resetAt - now) / 1_000)))
+            : null
+    } catch (error) {
+        console.warn('Rate limiting exception encountered, bypassing limiter:', error)
         return null
     }
-
-    const current = localBuckets.get(bucketKey)
-    if (!current || current.resetAt <= now) {
-        localBuckets.set(bucketKey, { count: 1, resetAt: now + policy.windowSeconds * 1_000 })
-        return null
-    }
-
-    current.count += 1
-    return current.count > policy.limit
-        ? rateLimitedResponse(Math.max(1, Math.ceil((current.resetAt - now) / 1_000)))
-        : null
 }
 
 function rateLimitedResponse(retryAfterSeconds: number, limit?: number, remaining = 0, reset?: number) {

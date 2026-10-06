@@ -18,9 +18,10 @@ export function UploadDropzone({ folderId, disabled = false, children }: UploadD
     async function uploadFilesWithStructure(files: File[]) {
         if (!files.length) return
 
+        // Only webkitRelativePath represents true relative directory structure from folder selection.
+        // Never use file.path which contains local OS filesystem paths (e.g. C:\Users\...)
         const filePaths = files.map((file) => {
-            const fileWithPath = file as File & { path?: string }
-            const path = file.webkitRelativePath || fileWithPath.path || file.name
+            const path = file.webkitRelativePath || file.name
             return path.replaceAll('\\', '/').replace(/^\/+/, '').replace(/^(?:\.\/)+/, '')
         })
         const parsed = files.map((file, index) => {

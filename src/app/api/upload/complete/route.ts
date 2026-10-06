@@ -33,7 +33,10 @@ export async function POST(request: Request) {
         const originalMimeType = parsed.data.originalMimeType ?? null
 
         if (!BUCKET_NAME) {
-            return NextResponse.json({ error: 'S3 storage is not configured.' }, { status: 500 })
+            return NextResponse.json({
+                error: 'Storage service error',
+                details: 'S3 storage bucket is not configured on the server.',
+            }, { status: 500 })
         }
 
         const destinationIsVault = folderId ? await isInVaultFolder(folderId) : false
@@ -79,11 +82,40 @@ export async function POST(request: Request) {
             }
         }
 
-        const uploadedObject = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
+        let uploadedObject
+        try {
+            uploadedObject = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
+        } catch (s3Error: unknown) {
+            console.error('Storage access error during HeadObject:', s3Error)
+            const err = s3Error as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } }
+            if (err.name === 'NotFound' || err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+                return NextResponse.json({
+                    error: 'Uploaded object was not found in storage.',
+                    details: err.message || 'Object not found in S3 bucket.',
+                }, { status: 404 })
+            }
+            return NextResponse.json({
+                error: 'Storage service error',
+                details: err.message || String(s3Error),
+            }, { status: 500 })
+        }
 
-        if (uploadedObject.ContentLength !== size || uploadedObject.ContentType !== mimeType) {
+        const cleanMime = (val?: string | null) => val?.split(';')[0].trim().toLowerCase() ?? ''
+        const s3Mime = cleanMime(uploadedObject.ContentType)
+        const expectedMime = cleanMime(mimeType)
+        const isMimeCompatible =
+            !s3Mime ||
+            !expectedMime ||
+            s3Mime === expectedMime ||
+            s3Mime === 'application/octet-stream' ||
+            expectedMime === 'application/octet-stream'
+
+        if (uploadedObject.ContentLength !== size || !isMimeCompatible) {
             await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key })).catch(() => undefined)
-            return NextResponse.json({ error: 'Uploaded object does not match the requested file.' }, { status: 400 })
+            return NextResponse.json({
+                error: 'Uploaded object does not match the requested file.',
+                details: `Expected size: ${size}, got ${uploadedObject.ContentLength}. Expected MIME: ${mimeType}, got: ${uploadedObject.ContentType}`,
+            }, { status: 400 })
         }
 
         const file = await prisma.$transaction(async (transaction) => {
@@ -100,10 +132,6 @@ export async function POST(request: Request) {
                     versions: { select: { versionNumber: true }, orderBy: { versionNumber: 'desc' }, take: 1 },
                 },
             })
-
-            if (existingFile && existingFile.id !== fileId) {
-                throw new UploadConflictError('This file changed while the upload was in progress. Retry the upload.')
-            }
 
             const storageOwnerId = existingFile?.userId ?? session.user.id
             const user = await transaction.user.findUnique({
@@ -125,22 +153,47 @@ export async function POST(request: Request) {
                 throw new StorageLimitError('Storage limit exceeded')
             }
 
-            const parentFile = existingFile
-                ? await transaction.file.update({
-                    where: { id: existingFile.id },
-                    data: { updatedAt: new Date(), fileHash: fileHash ?? null },
-                    select: { id: true },
-                })
-                : await transaction.file.create({
-                    data: {
-                        id: fileId,
-                        name,
-                        fileHash: fileHash ?? null,
-                        ...(folderId ? { folder: { connect: { id: folderId } } } : {}),
-                        user: { connect: { id: session.user.id } },
-                    },
-                    select: { id: true },
-                })
+            let parentFile: { id: string }
+            try {
+                parentFile = existingFile
+                    ? await transaction.file.update({
+                        where: { id: existingFile.id },
+                        data: { updatedAt: new Date(), fileHash: fileHash ?? null },
+                        select: { id: true },
+                    })
+                    : await transaction.file.create({
+                        data: {
+                            id: fileId,
+                            name,
+                            fileHash: fileHash ?? null,
+                            ...(folderId ? { folder: { connect: { id: folderId } } } : {}),
+                            user: { connect: { id: session.user.id } },
+                        },
+                        select: { id: true },
+                    })
+            } catch (err: unknown) {
+                const dbErr = err as { code?: string }
+                // Fallback if fileHash column was temporarily missing (P2022)
+                if (dbErr.code === 'P2022') {
+                    parentFile = existingFile
+                        ? await transaction.file.update({
+                            where: { id: existingFile.id },
+                            data: { updatedAt: new Date() },
+                            select: { id: true },
+                        })
+                        : await transaction.file.create({
+                            data: {
+                                id: fileId,
+                                name,
+                                ...(folderId ? { folder: { connect: { id: folderId } } } : {}),
+                                user: { connect: { id: session.user.id } },
+                            },
+                            select: { id: true },
+                        })
+                } else {
+                    throw err
+                }
+            }
 
             if (existingFile) {
                 await transaction.fileVersion.updateMany({
@@ -183,27 +236,32 @@ export async function POST(request: Request) {
             s3Key: key,
             mimeType,
             sizeBytes: size,
-        }).catch((error) => console.error('Unable to enqueue file processing:', error))
+        }).catch((error) => console.warn('Unable to enqueue background processing job:', error))
 
         return NextResponse.json({
             file: toDriveFilePayload(file, session.user.name || 'You'),
         }, { status: 201 })
-    } catch (error) {
+    } catch (error: unknown) {
+        console.error('Unable to complete upload:', error)
+        const err = error as { message?: string; name?: string; code?: string; stack?: string }
+
         if (error instanceof StorageLimitError) {
             await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key })).catch(() => undefined)
-            return NextResponse.json({ error: error.message }, { status: 400 })
+            return NextResponse.json({ error: error.message, details: err.message }, { status: 400 })
         }
 
         if (error instanceof UploadConflictError) {
             await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key })).catch(() => undefined)
-            return NextResponse.json({ error: error.message }, { status: 409 })
+            return NextResponse.json({ error: error.message, details: err.message }, { status: 409 })
         }
 
-        if (error instanceof Error && error.name === 'NotFound') {
-            return NextResponse.json({ error: 'Uploaded object was not found in storage.' }, { status: 404 })
+        if (err.name === 'NotFound' || err.name === 'NoSuchKey') {
+            return NextResponse.json({ error: 'Uploaded object was not found in storage.', details: err.message }, { status: 404 })
         }
 
-        console.error('Unable to complete upload:', error)
-        return NextResponse.json({ error: 'Unable to complete this upload.' }, { status: 500 })
+        return NextResponse.json({
+            error: 'Storage service error',
+            details: err.message || String(error),
+        }, { status: 500 })
     }
 }

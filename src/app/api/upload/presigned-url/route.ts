@@ -71,7 +71,18 @@ export async function POST(request: Request) {
         const fileId = existingFile?.id ?? randomUUID()
         const versionId = randomUUID()
         const key = `${session.user.id}/${fileId}/${versionId}`
-        const uploadUrl = await generateUploadUrl(key, mimeType)
+
+        let uploadUrl: string
+        try {
+            uploadUrl = await generateUploadUrl(key, mimeType)
+        } catch (s3Error: unknown) {
+            console.error('Storage service error generating upload URL:', s3Error)
+            const err = s3Error as Error
+            return NextResponse.json({
+                error: 'Storage service error',
+                details: err.message || String(s3Error),
+            }, { status: 500 })
+        }
 
         return NextResponse.json({
             uploadUrl,
@@ -80,8 +91,12 @@ export async function POST(request: Request) {
             versionId,
             isNewVersion: Boolean(existingFile),
         })
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Unable to create upload URL:', error)
-        return NextResponse.json({ error: 'Unable to prepare this upload.' }, { status: 500 })
+        const err = error as Error
+        return NextResponse.json({
+            error: 'Storage service error',
+            details: err.message || String(error),
+        }, { status: 500 })
     }
 }
