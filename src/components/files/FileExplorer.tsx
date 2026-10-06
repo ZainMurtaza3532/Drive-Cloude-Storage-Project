@@ -663,7 +663,7 @@ export function FileExplorer({
 
   function renderGrid(items: DriveFile[]) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 sm:gap-4">
         {items.map((file) => (
           <FileCard
             key={file.id}
@@ -681,15 +681,15 @@ export function FileExplorer({
 
   function renderList(items: DriveFile[]) {
     return (
-      <div className="overflow-x-auto rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#131922] shadow-2xs">
-        <table className="w-full min-w-[40rem] table-fixed text-left">
+      <div className="overflow-x-auto scrollbar-none rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#131922] shadow-2xs">
+        <table className="w-full min-w-[32rem] sm:min-w-[40rem] table-fixed text-left">
           <thead className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800">
             <tr className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              <th className="w-[44%] px-4 py-3.5">Name</th>
-              <th className="w-[14%] px-4 py-3.5">Size</th>
-              <th className="w-[16%] px-4 py-3.5">Owner</th>
-              <th className="w-[20%] px-4 py-3.5">Modified</th>
-              <th className="w-20 px-3 py-3.5 text-right" aria-label="Actions" />
+              <th className="w-[44%] px-3 sm:px-4 py-3 sm:py-3.5">Name</th>
+              <th className="w-[14%] px-3 sm:px-4 py-3 sm:py-3.5">Size</th>
+              <th className="w-[16%] px-3 sm:px-4 py-3 sm:py-3.5">Owner</th>
+              <th className="w-[20%] px-3 sm:px-4 py-3 sm:py-3.5">Modified</th>
+              <th className="w-16 sm:w-20 px-2 sm:px-3 py-3 sm:py-3.5 text-right" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>

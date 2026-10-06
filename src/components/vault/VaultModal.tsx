@@ -65,13 +65,13 @@ export function VaultModal({ open, onClose, onUnlock }: VaultModalProps) {
 
     return (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-            <section role="dialog" aria-modal="true" aria-labelledby="vault-title" className="w-full max-w-md border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-[#131922]">
+            <section role="dialog" aria-modal="true" aria-labelledby="vault-title" className="w-full max-w-md rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-[#131922] animate-in zoom-in-95 duration-150">
                 <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
                     <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><LockKeyhole className="h-4 w-4" /></span>
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"><LockKeyhole className="h-4 w-4" /></span>
                         <div><h2 id="vault-title" className="text-base font-semibold text-slate-900 dark:text-white">Encrypted Vault</h2><p className="mt-0.5 text-xs text-slate-500">Your PIN never leaves this browser.</p></div>
                     </div>
-                    <button type="button" onClick={onClose} aria-label="Close Vault" className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></button>
+                    <button type="button" onClick={onClose} aria-label="Close Vault" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"><X className="h-4 w-4" /></button>
                 </header>
                 <form onSubmit={submit} className="space-y-4 p-5">
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">{vault ? 'PIN or password' : 'Create PIN or password'}

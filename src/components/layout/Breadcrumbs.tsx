@@ -13,10 +13,10 @@ export function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
   )
 
   return (
-    <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-1.5 text-sm">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs sm:text-sm overflow-x-auto scrollbar-none py-1 max-w-full">
       <Link
         href="/dashboard"
-        className={`flex items-center gap-1.5 font-medium transition-colors ${
+        className={`flex items-center gap-1.5 font-medium transition-colors shrink-0 ${
           subItems.length === 0
             ? 'text-slate-900 dark:text-white font-semibold'
             : 'text-slate-500 dark:text-slate-400 hover:text-[#f15a24] dark:hover:text-[#ff7847]'
@@ -29,11 +29,11 @@ export function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
       {subItems.map((item, index) => {
         const isLast = index === subItems.length - 1
         return (
-          <div key={`${item.href}-${index}`} className="flex items-center gap-1.5">
+          <div key={`${item.href}-${index}`} className="flex items-center gap-1.5 shrink-0">
             <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
             <Link
               href={item.href}
-              className={`transition-colors truncate max-w-[200px] ${
+              className={`transition-colors truncate max-w-[120px] sm:max-w-[200px] ${
                 isLast
                   ? 'font-semibold text-slate-900 dark:text-white'
                   : 'text-slate-500 dark:text-slate-400 hover:text-[#f15a24] dark:hover:text-[#ff7847]'

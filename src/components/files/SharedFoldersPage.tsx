@@ -138,21 +138,21 @@ export function SharedFoldersPage() {
                         </p>
                     </div>
                     {currentFolder && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             {canEdit && (
                                 <>
-                                    <button type="button" onClick={openFileDialog} className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f15a24] hover:text-[#f15a24] dark:border-slate-700 dark:bg-[#131922] dark:text-slate-200">
-                                        <Upload className="h-4 w-4" /> Upload files
+                                    <button type="button" onClick={openFileDialog} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:border-[#f15a24] hover:text-[#f15a24] dark:border-slate-700 dark:bg-[#131922] dark:text-slate-200 cursor-pointer shadow-2xs">
+                                        <Upload className="h-4 w-4 text-[#f15a24]" /> Upload files
                                     </button>
-                                    <button type="button" onClick={openFolderDialog} className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f15a24] hover:text-[#f15a24] dark:border-slate-700 dark:bg-[#131922] dark:text-slate-200">
-                                        <FolderUp className="h-4 w-4" /> Upload folder
+                                    <button type="button" onClick={openFolderDialog} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:border-[#f15a24] hover:text-[#f15a24] dark:border-slate-700 dark:bg-[#131922] dark:text-slate-200 cursor-pointer shadow-2xs">
+                                        <FolderUp className="h-4 w-4 text-[#f15a24]" /> Upload folder
                                     </button>
-                                    <button type="button" onClick={() => void createSubfolder()} className="inline-flex items-center gap-2 rounded-md bg-[#f15a24] px-3 py-2 text-sm font-semibold text-white hover:bg-[#d94e1b]">
+                                    <button type="button" onClick={() => void createSubfolder()} className="inline-flex items-center gap-2 rounded-xl bg-[#f15a24] px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-semibold text-white hover:bg-[#d94e1b] cursor-pointer shadow-2xs">
                                         <FolderPlus className="h-4 w-4" /> New folder
                                     </button>
                                 </>
                             )}
-                            <span className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${canEdit ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                            <span className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${canEdit ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
                                 {currentFolder.role === 'OWNER' ? 'Owner' : currentFolder.role === 'EDITOR' ? 'Editor' : 'Viewer'}
                             </span>
                         </div>

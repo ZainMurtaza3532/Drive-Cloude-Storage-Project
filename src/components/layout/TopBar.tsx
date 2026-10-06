@@ -108,7 +108,7 @@ export function TopBar() {
   }, [])
 
   return (
-    <header className="flex h-18 items-center justify-between border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#0f141c]/80 px-4 lg:px-8 backdrop-blur-md sticky top-0 z-20">
+    <header className="flex h-16 sm:h-18 items-center justify-between border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#0f141c]/80 px-3 sm:px-6 lg:px-8 backdrop-blur-md sticky top-0 z-20">
       {/* Left: Mobile Menu & Search */}
       <div className="flex flex-1 items-center gap-2 sm:gap-3 min-w-0">
         <button
@@ -122,7 +122,7 @@ export function TopBar() {
         </button>
 
         <div className="relative w-full max-w-xl group" ref={searchRef}>
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 sm:pl-3.5">
             <Search className="h-4 w-4 text-slate-400 group-focus-within:text-[#f15a24] transition-colors" />
           </div>
           <input
@@ -134,7 +134,7 @@ export function TopBar() {
               if (event.key === 'Enter') submitSearch()
               if (event.key === 'Escape') setIsSearchOpen(false)
             }}
-            className="block w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/60 py-2.5 pl-10 pr-9 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#f15a24] focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-[#f15a24]/10 transition-all duration-150"
+            className="block w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/60 py-2 sm:py-2.5 pl-9 sm:pl-10 pr-8 sm:pr-9 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#f15a24] focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-[#f15a24]/10 transition-all duration-150"
             placeholder="Search files and folders..."
             aria-label="Search files and folders"
           />
@@ -216,7 +216,7 @@ export function TopBar() {
       </div>
 
       {/* Right: View Toggle & Profile */}
-      <div className="ml-4 flex items-center gap-3">
+      <div className="ml-2 sm:ml-4 flex items-center gap-2 sm:gap-3 shrink-0">
         {/* Grid/List Segmented Toggle */}
         <div className="hidden items-center gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 p-1 sm:flex border border-slate-200/50 dark:border-slate-700/50">
           <button
@@ -248,7 +248,7 @@ export function TopBar() {
           <button
             type="button"
             onClick={() => setIsProfileOpen((open) => !open)}
-            className="flex items-center gap-2.5 rounded-full border border-slate-200/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-2 py-1.5 pr-2.5 transition-all hover:border-[#f15a24]/30 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shadow-2xs"
+            className="flex items-center gap-1.5 sm:gap-2.5 rounded-full border border-slate-200/80 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 p-1 sm:px-2 sm:py-1.5 sm:pr-2.5 transition-all hover:border-[#f15a24]/30 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer shadow-2xs"
           >
             <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-tr from-[#f15a24] to-[#f97316] text-xs font-bold text-white shadow-xs">
               {session?.user?.image ? (
@@ -260,7 +260,7 @@ export function TopBar() {
             <span className="hidden text-xs font-semibold text-slate-700 sm:block dark:text-slate-200 max-w-[120px] truncate">
               {session?.user?.name || 'User'}
             </span>
-            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+            <ChevronDown className="hidden sm:block h-3.5 w-3.5 text-slate-400" />
           </button>
 
           {isProfileOpen && (

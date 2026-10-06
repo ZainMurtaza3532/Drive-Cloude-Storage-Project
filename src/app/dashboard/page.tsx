@@ -335,13 +335,13 @@ function DashboardContent() {
       {(openFileDialog, openFolderDialog) => (
         <div className="flex h-full flex-col">
           {/* Top Bar Actions & Breadcrumb Row */}
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 max-w-full overflow-hidden">
               {folderId && (
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-[#131922] px-3 py-2 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 hover:border-[#f15a24] hover:text-[#f15a24] dark:hover:text-[#ff7847] transition-all cursor-pointer shadow-2xs"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-[#131922] px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 hover:border-[#f15a24] hover:text-[#f15a24] dark:hover:text-[#ff7847] transition-all cursor-pointer shadow-2xs"
                 >
                   <ArrowLeft className="h-4 w-4" />
                   <span>Back</span>
@@ -351,46 +351,62 @@ function DashboardContent() {
             </div>
 
             {/* Action buttons */}
-            <div className="flex items-center gap-2.5">
-              {folderPermission !== 'VIEWER' && <button
-                id="trigger-upload-files"
-                type="button"
-                onClick={openFileDialog}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131922] px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-[#f15a24] hover:text-[#f15a24] dark:hover:border-[#f15a24] dark:hover:text-[#ff7847] transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
-              >
-                <Upload className="h-4 w-4 text-[#f15a24]" />
-                <span>Upload files</span>
-              </button>}
-
-              {folderPermission !== 'VIEWER' && <button
-                id="trigger-upload-folder"
-                type="button"
-                onClick={openFolderDialog}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131922] px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-[#f15a24] hover:text-[#f15a24] dark:hover:border-[#f15a24] dark:hover:text-[#ff7847] transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
-              >
-                <FolderUp className="h-4 w-4 text-[#f15a24]" />
-                <span>Upload folder</span>
-              </button>}
-
-              {vaultFolderId ? (
-                <button type="button" onClick={() => { lockVault(); router.push('/dashboard') }} className="inline-flex items-center gap-2 border border-emerald-700/30 bg-emerald-50 px-3 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300">
-                  <LockKeyhole className="h-4 w-4" /> Lock Vault
-                </button>
-              ) : (
-                <button type="button" onClick={() => setVaultModalOpen(true)} className="inline-flex items-center gap-2 border border-emerald-700/30 bg-white px-3 py-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 dark:bg-[#131922] dark:text-emerald-300 dark:hover:bg-emerald-500/10">
-                  <LockKeyhole className="h-4 w-4" /> Vault
+            <div className="grid grid-cols-2 gap-2 w-full sm:flex sm:w-auto sm:items-center sm:gap-2.5">
+              {folderPermission !== 'VIEWER' && (
+                <button
+                  id="trigger-upload-files"
+                  type="button"
+                  onClick={openFileDialog}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131922] px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-[#f15a24] hover:text-[#f15a24] dark:hover:border-[#f15a24] dark:hover:text-[#ff7847] transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+                >
+                  <Upload className="h-4 w-4 text-[#f15a24] shrink-0" />
+                  <span className="truncate">Upload files</span>
                 </button>
               )}
 
-              {folderPermission !== 'VIEWER' && <button
-                id="trigger-new-folder"
-                type="button"
-                onClick={() => setCreateModalOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#f15a24] hover:bg-[#d94e1b] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md shadow-[#f15a24]/20 hover:shadow-lg hover:shadow-[#f15a24]/30 transition-all cursor-pointer active:scale-[0.98]"
-              >
-                <Plus className="h-4 w-4 stroke-[2.5]" />
-                <span>New folder</span>
-              </button>}
+              {folderPermission !== 'VIEWER' && (
+                <button
+                  id="trigger-upload-folder"
+                  type="button"
+                  onClick={openFolderDialog}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131922] px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:border-[#f15a24] hover:text-[#f15a24] dark:hover:border-[#f15a24] dark:hover:text-[#ff7847] transition-all cursor-pointer shadow-2xs active:scale-[0.98]"
+                >
+                  <FolderUp className="h-4 w-4 text-[#f15a24] shrink-0" />
+                  <span className="truncate">Upload folder</span>
+                </button>
+              )}
+
+              {vaultFolderId ? (
+                <button
+                  type="button"
+                  onClick={() => { lockVault(); router.push('/dashboard') }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/30 bg-emerald-50 px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold text-emerald-800 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 transition-all cursor-pointer active:scale-[0.98]"
+                >
+                  <LockKeyhole className="h-4 w-4 shrink-0" />
+                  <span className="truncate">Lock Vault</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setVaultModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/30 bg-white px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-semibold text-emerald-800 hover:bg-emerald-50 dark:bg-[#131922] dark:text-emerald-300 dark:hover:bg-emerald-500/10 transition-all cursor-pointer active:scale-[0.98]"
+                >
+                  <LockKeyhole className="h-4 w-4 shrink-0" />
+                  <span className="truncate">Vault</span>
+                </button>
+              )}
+
+              {folderPermission !== 'VIEWER' && (
+                <button
+                  id="trigger-new-folder"
+                  type="button"
+                  onClick={() => setCreateModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#f15a24] hover:bg-[#d94e1b] px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-semibold text-white shadow-md shadow-[#f15a24]/20 hover:shadow-lg hover:shadow-[#f15a24]/30 transition-all cursor-pointer active:scale-[0.98]"
+                >
+                  <Plus className="h-4 w-4 stroke-[2.5] shrink-0" />
+                  <span className="truncate">New folder</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -441,7 +457,7 @@ function DashboardContent() {
 
           {/* Folders Section */}
           <div className="mb-10 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                   Folders
@@ -455,7 +471,7 @@ function DashboardContent() {
                   type="button"
                   onClick={() => handleBulkDownload([])}
                   disabled={selectedFolderIds.size === 0}
-                  className="text-xs sm:text-sm font-semibold text-[#f15a24] hover:text-[#d94e1b] transition-colors cursor-pointer"
+                  className="text-xs sm:text-sm font-semibold text-[#f15a24] hover:text-[#d94e1b] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Download selected as ZIP{selectedFolderIds.size ? ` (${selectedFolderIds.size})` : ''}
                 </button>
@@ -463,7 +479,7 @@ function DashboardContent() {
             </div>
 
             {isLoading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                 {[1, 2, 3, 4].map((n) => (
                   <div
                     key={n}
@@ -472,7 +488,7 @@ function DashboardContent() {
                 ))}
               </div>
             ) : folders.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                 {folders.map((folder) => (
                   <FolderCard
                     key={folder.id}
